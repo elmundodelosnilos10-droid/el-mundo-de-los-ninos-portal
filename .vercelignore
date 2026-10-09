@@ -1,0 +1,17 @@
+.dev.vars*
+.env*
+.wrangler
+.sites-runtime
+.agents
+.codex
+.openai
+dist
+.next
+outputs
+output
+tmp
+work
+coverage
+deploy
+*.log
+*.tar.gz

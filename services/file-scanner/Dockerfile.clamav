@@ -1,0 +1,7 @@
+FROM clamav/clamav:1.4.6_base@sha256:90effb795234e6a93b070310a4bab5a58d93d94b9a077a09ce2229947679782b
+COPY clamd.conf freshclam.conf /etc/clamav/
+COPY clamav-entrypoint.sh /usr/local/bin/school-clamav-entrypoint.sh
+RUN chmod 755 /usr/local/bin/school-clamav-entrypoint.sh
+# HTTP readiness checks this exact daemon and its loaded database, privately.
+HEALTHCHECK NONE
+ENTRYPOINT ["/usr/local/bin/school-clamav-entrypoint.sh"]

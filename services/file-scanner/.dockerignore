@@ -1,0 +1,9 @@
+*
+!clamd.mjs
+!server.mjs
+!healthcheck.mjs
+!clamd.conf
+!freshclam.conf
+!clamav-entrypoint.sh
+!Dockerfile
+!Dockerfile.clamav

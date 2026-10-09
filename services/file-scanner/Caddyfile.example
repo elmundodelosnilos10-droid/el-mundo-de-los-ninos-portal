@@ -1,0 +1,13 @@
+# Optional HOST ingress; requires separate approval/provisioning and TLS/DNS.
+# Run Caddy on the same host as Compose. No browser CORS or access logs.
+{$SCANNER_DOMAIN} {
+  request_body {
+    max_size 20MiB
+  }
+  reverse_proxy 127.0.0.1:8080 {
+    transport http {
+      dial_timeout 2s
+      response_header_timeout 13s
+    }
+  }
+}

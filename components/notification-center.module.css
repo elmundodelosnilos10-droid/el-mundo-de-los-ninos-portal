@@ -1,0 +1,2 @@
+.status { color: var(--muted-foreground, #506653); font-size: .8rem; line-height: 1.5; margin: .65rem 0; }
+.errorIndicator { display: inline-grid; place-items: center; width: 1.15rem; height: 1.15rem; margin-left: .35rem; border-radius: 50%; color: #fff; background: #a32d28; font-size: .75rem; font-weight: 800; }

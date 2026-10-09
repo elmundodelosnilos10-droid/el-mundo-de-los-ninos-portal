@@ -1,0 +1,69 @@
+services:
+  scanner:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    init: true
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 64
+    mem_limit: 256m
+    cpus: 1.0
+    environment:
+      PORT: '8080'
+      CLAMD_HOST: clamav
+      CLAMD_PORT: '3310'
+      CLAMD_ENGINE_VERSION: '1.4.6'
+      SCANNER_TOKEN_FILE: /run/secrets/file_scan_token
+      MAX_SCAN_BYTES: '20971520'
+      REQUEST_TIMEOUT_MS: '12000'
+      MAX_DATABASE_AGE_HOURS: '24'
+      MAX_CONCURRENT_SCANS: '2'
+    secrets: [file_scan_token]
+    # Terminate HTTPS on the host or a separately configured private ingress.
+    # Neither 8080 nor the unauthenticated ClamAV socket is public.
+    ports: ['127.0.0.1:8080:8080']
+    networks: [scan_internal]
+    depends_on: [clamav]
+    healthcheck:
+      test: [CMD, node, healthcheck.mjs]
+      interval: 30s
+      timeout: 6s
+      retries: 3
+      start_period: 15m
+    logging:
+      driver: none
+  clamav:
+    platform: linux/amd64
+    build:
+      context: .
+      dockerfile: Dockerfile.clamav
+    restart: unless-stopped
+    init: true
+    read_only: true
+    cap_drop: [ALL]
+    cap_add: [CHOWN, SETUID, SETGID, DAC_OVERRIDE]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 64
+    mem_limit: 4g
+    cpus: 2.0
+    environment:
+      TZ: UTC
+    volumes: [clamav_signatures:/var/lib/clamav]
+    tmpfs:
+      - /run:rw,noexec,nosuid,size=16m
+      - /tmp:rw,noexec,nosuid,size=256m
+    networks: [scan_internal, signatures_egress]
+    logging:
+      driver: none
+networks:
+  scan_internal:
+    internal: true
+  signatures_egress: {}
+volumes:
+  clamav_signatures: {}
+secrets:
+  file_scan_token:
+    file: ${SCANNER_TOKEN_PATH:?Provide the private token file path}

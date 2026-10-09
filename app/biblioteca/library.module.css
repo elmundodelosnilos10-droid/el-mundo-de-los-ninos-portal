@@ -1,0 +1,20 @@
+.filters { display: grid; grid-template-columns: minmax(180px, 2fr) minmax(150px, 1fr) minmax(150px, 1fr) auto; gap: 1rem; align-items: end; margin: 1.4rem 0; }
+.field { display: flex; flex-direction: column; gap: .45rem; }
+.field label { font-weight: 650; }
+.field input, .field select { width: 100%; padding: .75rem; border: 1px solid #cbd8cc; border-radius: 10px; background: #fff; color: #293c30; font: inherit; }
+.searchActions { display: flex; gap: .6rem; flex-wrap: wrap; }
+.summary { color: #566759; margin-bottom: .8rem; }
+.pagination { display: flex; justify-content: center; align-items: center; gap: 1rem; margin-top: 1.4rem; flex-wrap: wrap; }
+.previewDialog { border: 1px solid #d5e1d4; border-radius: 22px; width: min(1000px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); padding: 1.4rem; color: #293c30; background: #fffdf7; box-shadow: 0 28px 80px #17361f33; }
+.previewDialog::backdrop { background: #19342499; }
+.previewHeading { display: flex; gap: 1.2rem; align-items: start; justify-content: space-between; margin-bottom: 1rem; }
+.previewHeading h2 { margin-top: 0; margin-bottom: .3rem; overflow-wrap: anywhere; }
+.previewHeading p { margin-bottom: .3rem; overflow-wrap: anywhere; }
+.previewBody { background: #edf4ec; border-radius: 14px; overflow: hidden; display: flex; align-items: center; justify-content: center; min-height: 140px; }
+.pdfPreview { display: block; width: 100%; height: min(65dvh, 700px); border: 0; }
+.imagePreview { display: block; max-width: 100%; width: auto; height: auto; max-height: 65dvh; object-fit: contain; }
+.audioPreview { width: min(100%, 700px); margin: 2rem 1rem; }
+.previewFooter { display: flex; gap: 1rem; align-items: center; justify-content: space-between; margin-top: 1rem; }
+.previewFooter p { font-size: .9rem; color: #566759; margin: 0; }
+@media (max-width: 900px) { .filters { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 560px) { .filters { grid-template-columns: 1fr; } .previewDialog { padding: 1rem; } .previewHeading, .previewFooter { flex-direction: column; } }

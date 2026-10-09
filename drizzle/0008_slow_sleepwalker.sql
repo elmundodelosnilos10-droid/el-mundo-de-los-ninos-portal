@@ -1,0 +1,2 @@
+DROP INDEX `enrollments_student_group_idx`;--> statement-breakpoint
+CREATE UNIQUE INDEX `enrollments_student_group_active_idx` ON `enrollments` (`student_id`,`group_id`) WHERE "enrollments"."ended_at" is null;
