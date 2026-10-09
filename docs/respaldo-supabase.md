@@ -4,7 +4,7 @@ Actualizado: 9 de octubre de 2026. La copia SQL del proyecto escolar está cifra
 
 ## Estado comprobado
 
-El hosting publicado es [Vercel](https://el-mundo-de-los-ninos-portal.vercel.app), despliegue READY `dpl_8YhGFfsnnz5MH1GpMN7v2cVFvJtT`, con Supabase escolar como Auth/datos/Storage. Hay 25 versiones registradas: base 08 a 28 y publicación Realtime 30. El grant SELECT de SQL29 ya se autorizó y ejecutó sobre las 33 tablas; su versión todavía no se registra en el historial de migraciones. Biblioteca 27 y calendario 28 pasaron pruebas PostgreSQL con ROLLBACK. Ver [Hosting Vercel](hosting-vercel.md), [Verificación Vercel/Supabase](verificacion-vercel-supabase-20261008.md) y [Estado de requisitos](estado-requisitos.md).
+El hosting publicado es [Vercel](https://el-mundo-de-los-ninos-portal.vercel.app), despliegue READY `dpl_AmZ38XZYKW78An34G9Hn3pTpizVn`, con Supabase escolar como Auth/datos/Storage. Hay 25 versiones registradas: base 08 a 28 y publicación Realtime 30. El grant SELECT de SQL29 ya se autorizó y ejecutó sobre las 33 tablas; su versión todavía no se registra en el historial de migraciones. Biblioteca 27 y calendario 28 pasaron pruebas PostgreSQL con ROLLBACK. Ver [Hosting Vercel](hosting-vercel.md), [Verificación Vercel/Supabase](verificacion-vercel-supabase-20261008.md) y [Estado de requisitos](estado-requisitos.md).
 
 El intento HTTP anterior se detuvo por **403 al leer `profiles`** y se conserva como fallo histórico. Ahora se verificó SELECT efectivo para `service_role` en las 33 tablas mediante SQL de solo lectura. La copia nueva se obtuvo mediante Export CSV del SQL Editor; no acredita que se haya repetido el export HTTP con una clave. Las cargas siguen bloqueadas sin scanner real. Los directorios parciales del intento anterior no son copias válidas.
 
@@ -53,7 +53,7 @@ La recuperación SQL usa `scripts/supabase-school-sql-snapshot-restore-local.mjs
 
 `preflightSchoolSnapshotMetadata` revisa esos metadatos dentro de una transacción **READ ONLY** y acepta el destino local ocupado, sin importar datos, ejecutar DDL ni ampliar permisos. El ensayo real en la copia escolar preservada pasó: 133 restricciones, 75 índices, 2 triggers públicos, 85 definiciones de funciones, 79 políticas, 33 ACL de tablas y ningún enum público. Las 60 colecciones/98 filas siguieron iguales al archivo capturado antes y después. Storage coincidió en sus 7 triggers y cero políticas capturadas; su catálogo ACL administrado de 10 tablas difiere de las 8 capturadas y se reporta como diferencia, sin cambiar permisos. Evidencia: `outputs/production-backup-metadata-preflight-20261009.json`; parada oficial con servicios y endpoints cerrados: `outputs/production-backup-metadata-preflight-stopped-20261009.json`.
 
-Esta comprobación cubre los campos del formato v1; no acredita ACL de funciones, registros de event triggers, estado habilitado de triggers, configuración administrada, Auth/Reatime completos ni equivalencia de servicios. Las diferencias de Storage no se presentan como un rechazo de acceso familiar comprobado. No sustituye la prueba de contraseña ni la custodia externa pendientes.
+Esta comprobación cubre los campos del formato v1; no acredita ACL de funciones, registros de event triggers, estado habilitado de triggers, configuración administrada, Auth/Realtime completos ni equivalencia de servicios. Las diferencias de Storage no se presentan como un rechazo de acceso familiar comprobado. No sustituye la prueba de contraseña ni la custodia externa pendientes.
 
 ## Qué incluye el formato HTTP y qué queda fuera
 
