@@ -106,3 +106,15 @@ La revisión autenticada de administración abrió las 18 pestañas a 320×740 s
 Evidencias locales: `outputs/vercel-release-final-20261009.json`, `outputs/release-validation-final3-20261009.json`, `outputs/portal-production-final-pages-mobile-20261009.json` y capturas `portal-production-final-desktop-20261009.jpg` / `portal-production-final-mobile-20261009.jpg`. Los informes anteriores se conservan.
 
 La conexión HTTPS de avisos se observó con la cuenta administrativa existente. El ensayo Realtime aislado pasó entrega, aislamiento y revocación con un dispatcher exclusivo del harness; no sustituye la aceptación publicada entre docentes/familias. Siguen pendientes el analizador privado publicado, la entrega de correo comprobada, el permiso adicional de respaldo y la revisión operativa/privacidad de la escuela. La transferencia de cuenta Vercel continúa diferida por decisión del usuario.
+
+## Preparación de avisos externos publicada · 9 de octubre de 2026
+
+Versión **READY `dpl_92bcpusyKwDi7nQ2CKhqP6PHcHSe`**, URL única https://el-mundo-de-los-ninos-portal-fn3puof77-pandito.vercel.app, promovida al dominio habitual desde el mismo build comprobado. Fuente del código registrada en GitHub privado escolar: `7ea2ae7c0b4f6c70ecce45fc6b675636f085fc77`, 518 blobs auditados; posteriores commits documentales no alteran esa compilación.
+
+589 pruebas pasaron; lint, TypeScript, Next/Sites y build remoto pasaron. 27 controles HTTP pasaron antes de promover y 27 en el dominio habitual, incluidos acceso anónimo/CSRF de los nuevos handlers y el asset genérico del service worker. El inventario de subida real excluyó configuraciones/evidencias/temporales y no contenía los tres valores privados comprobados.
+
+Los cuatro indicadores exactos de configuración externa no están definidos en Production: proveedores email/push, worker y settings. Mi cuenta con la sesión administrativa no muestra los controles opcionales. No se registró un dispositivo ni se solicitó permiso de notificaciones. SQL31 no está aplicado en producción; esta publicación prepara código y documentación, sin activar envíos, nuevos permisos de base ni un cron.
+
+Evidencia: `outputs/vercel-release-notices-20261009.json`, `outputs/github-publication-remote-notices-20261009.json`, `outputs/vercel-notices-{stage,production}-http-20261009.json` y los dos informes `new-routes`. La captura administrativa es `outputs/portal-production-notices-release-20261009.jpg`. El escaneo de logs del release en esa ventana devolvió cero entradas de nivel error; no se inspeccionaron drains ni se configuró monitoreo externo.
+
+Scanner, recepción de correos Auth, permiso/backup de producción y aceptación escolar siguen pendientes. Ver [avisos externos preparados](notificaciones-externas.md) y [registro de requisitos](estado-requisitos.md).
