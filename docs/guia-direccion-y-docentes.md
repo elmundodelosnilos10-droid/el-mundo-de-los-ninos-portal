@@ -21,6 +21,8 @@ La escuela administra nombre, rol y estado de la cuenta. Desactivar el perfil bl
 - Publica instrucciones breves y recursos adecuados a la etapa. Biblioteca organiza guías, canciones, vocabulario y audios por grupo/categoría; permite buscar, previsualizar y descargar.
 - Las cargas nuevas admiten hasta **4 MB por archivo**. Cuando la recepción segura no esté preparada, los controles aparecen desactivados; el servicio debe configurarse y probarse en el hosting publicado. El ensayo local real ya pasó y no sustituye esa operación.
 
+En **Tareas y entregas**, consulta hasta 25 tareas por página; **Anterior** y **Siguiente** permiten recorrer las demás. Cada panel de entregas corresponde a la tarea indicada en su título. Si una consulta falla después de un guardado confirmado, conserva la confirmación y usa **Actualizar tareas** antes de volver a enviar.
+
 ## Durante y después
 
 1. Registra asistencia por grupo/fecha y guarda. El portal no obtiene la asistencia automáticamente de Meet.
@@ -40,6 +42,8 @@ Los reportes se descargan en Excel, PDF o CSV para periodos de hasta 366 días. 
 Dirección debe revisar y aprobar aviso, representación familiar, autorizaciones, conservación de información y proceso de solicitudes. Superadministración publica una versión del aviso ya aprobada en **Estado del sistema**. **Autorizaciones** registra decisiones; **Solicitudes de privacidad** registra revisión y respuesta. El portal no sustituye esas decisiones escolares.
 
 Las bajas conservan el historial. Reactivar un alumno requiere grupo activo. Planifica respaldo cifrado de datos y archivos, recuperación de identidades Auth y un ensayo de restauración en un destino separado. Define quién realiza ese trabajo y dónde conserva la frase de recuperación; nunca en esta guía ni en el repositorio.
+
+El ingreso muestra **Preparando acceso…** unos instantes antes de habilitar los campos; después usa el correo y la contraseña propios.
 
 ## Si algo falla
 

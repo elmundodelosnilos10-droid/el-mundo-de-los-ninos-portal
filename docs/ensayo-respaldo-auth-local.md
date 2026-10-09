@@ -1,5 +1,11 @@
 # Respaldo Auth completo y ensayo de restauración local
 
+## Estado vigente
+
+La restauración sintética completa posterior **sí se ejecutó**: `outputs/supabase-full-auth-restore-20261009.json` registra seis comprobaciones PASS de UUID/hashes/identidades, datos, objetos privados, login de dos familias y autorización/denegación. El destino preservado terminó con 33 tablas/69 filas, seis identidades Auth y tres objetos. Las secciones siguientes conservan la preparación y captura anteriores; no describen el estado vigente del destino.
+
+También se completó el [recorrido de familias en navegador local](aceptacion-familias-navegador-local.md), con cuentas ficticias, sin cookies manuales y con baseline preservado. Ninguno de estos ensayos prueba el acceso por contraseña de la **copia escolar real**, la custodia externa o la recuperación de configuración administrada; esos pendientes permanecen en [Estado de requisitos](estado-requisitos.md).
+
 ## Alcance y fuentes
 
 La guía oficial recomienda exportar roles, esquema y datos mediante el CLI, que filtra objetos internos. Auth y sus datos relacionados forman parte del dump; las claves JWT y configuración de proveedores se gestionan aparte, y Storage necesita transferencia independiente. Esta cuenta de ensayo usa la contraseña original conocida para comprobar el acceso después de restaurar. [Guía oficial de restauración](https://supabase.com/docs/guides/self-hosting/restore-from-platform).
@@ -16,7 +22,7 @@ Las personalizaciones de los esquemas administrados se deben reponer con las mig
 
 SQL y logs transitorios se guardan con permisos `0600` en un directorio `0700` y se eliminan. UUID, hashes de contraseña e identidades aparecen únicamente en el manifiesto cifrado. Ningún script carga `.env`/`.dev.vars` ni admite destinos remotos.
 
-## Secuencia de aceptación pendiente
+## Secuencia inicial de aceptación · contexto histórico
 
 1. Root libera la fuente de otros ensayos. Conservar los respaldos actuales antes de cualquier limpieza. El runner no resetea la fuente.
 2. Preparar dos familias sintéticas con contraseña conocida en memoria y comprobar login en origen **antes** de respaldar. Las contraseñas del fixture HTTP anterior fueron descartadas: su archivo capturado acredita preservación de Auth, pero no una prueba de acceso restaurado. Una opción para un nuevo ensayo es fijar una contraseña sintética en esas cuentas locales, conservando sus UUID, y después tomar otro respaldo. Esa preparación necesita autorización y exclusividad; estos runners no la ejecutan.
@@ -31,12 +37,12 @@ SQL y logs transitorios se guardan con permisos `0600` en un directorio `0700` y
 
 El archivo de probes contiene `users` (UUID/email/password/role; para cada tutor, ownStudentId/foreignStudentId) y `object` (fileId/key/sha256/ownerUserId/foreignUserId). Los alumnos ajenos deben ser los alumnos propios de otro probe para evitar una comprobación negativa contra un UUID inexistente.
 
-## Estado real a 2026-10-09
+## Captura inicial · estado histórico
 
 Captura nativa real completada: 4 usuarios y 4 identidades, UUID/hashes/identidades conservados en complemento cifrado. Verificación de integridad y estabilidad antes/después: PASS. SQL temporal eliminado. El respaldo público separado pasó 33 tablas, 34 filas y cero objetos.
 
 La restauración, login restaurado y recuperación de bytes **no se ejecutaron**. El runner está preparado para ese ensayo y no se presenta como evidencia de recuperación completa. Las pruebas unitarias cubren guardas y contratos; no simulan una restauración del proveedor ni la acreditan.
 
-## Destino preparado, todavía sin datos restaurados
+## Preparación inicial del destino · contexto histórico
 
 Instancia native independiente `school-restore-isolated-20261009`, workdir `/tmp/school-isolated-runtime-20261008/restore-target`, compartiendo únicamente cache oficial de binarios. Arranque privado: `restore-target-start-result.json`; claves locales privadas: `school-realtime-local-credentials.restore-target.json`. 26 migraciones instaladas automáticamente, PG170011, 33 tablas vacías, Auth0, Storage0, bucket privado presente y publicación Realtime INSERT/UPDATE solamente. El rol de mantenimiento local ya tiene SELECT/INSERT/UPDATE necesarios; no se agregó ningún grant ni policy para descargar archivos. La tabla privada de provisión tiene RLS habilitado sin FORCE y carece de SELECT authenticated, conforme a SQL24. RSS observado de todos los procesos native fuente+destino juntos:384MiB (una cota superior para el destino, no un límite permanente bajo carga).
