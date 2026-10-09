@@ -46,7 +46,9 @@ export function NotificationCenter() {
   const unread = state.items.filter(notice => !notice.readAt && !state.confirmedReadIds.includes(notice.id)).length;
   function toggle() { if (!open) client.current?.refresh(); setOpen(current => !current); }
   function close() { setOpen(false); toggleButton.current?.focus(); }
-  return <div className="notification-center">
+  return <div className="notification-center" onKeyDown={event => {
+    if (open && event.key === "Escape") { event.preventDefault(); close(); }
+  }}>
     <button ref={toggleButton} type="button" className="notification-toggle" aria-expanded={open} aria-controls={panelId} onClick={toggle}>Avisos{unread > 0 && <span className="notification-count" aria-label={`${unread} avisos sin leer`}>{unread}</span>}{(state.error || state.markError) && <span className={styles.errorIndicator} aria-label="Hay un problema con tus avisos">!</span>}</button>
     {open && <section id={panelId} className="notification-popover" aria-label="Notificaciones escolares" aria-busy={state.loading || Boolean(state.markingId)}>
       <div className="panel-heading"><strong>Notificaciones</strong><button type="button" className="secondary-button" onClick={close}>Cerrar</button></div>
