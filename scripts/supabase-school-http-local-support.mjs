@@ -28,7 +28,8 @@ export function localConfig(env) {
   if (!evidenceFile?.startsWith('/') || !evidenceFile.endsWith('.json') || evidenceFile === credentialsFile) {
     throw new Error('Se requiere una ruta absoluta .json separada para evidencia.');
   }
-  return { appOrigin, supabaseOrigin, credentialsFile, evidenceFile };
+  if (env.LOCAL_SCHOOL_HTTP_FILES !== undefined && env.LOCAL_SCHOOL_HTTP_FILES !== "required") throw new Error("LOCAL_SCHOOL_HTTP_FILES solo admite required.");
+  return { appOrigin, supabaseOrigin, credentialsFile, evidenceFile, ...(env.LOCAL_SCHOOL_HTTP_FILES === "required" ? { includeFiles: true } : {}) };
 }
 
 export async function localCredentials(path) {
@@ -65,11 +66,26 @@ export class LocalHttp {
     this.evidence = evidence;
   }
 
-  async request(target, path, { method = 'GET', body, headers = {}, jar, statuses = [200], label = 'HTTP' } = {}) {
+  async request(target, path, { method = 'GET', body, headers = {}, jar, statuses = [200], label = 'HTTP', responseType = 'json' } = {}) {
     const origin = target === 'app' ? this.appOrigin : target === 'supabase' ? this.supabaseOrigin : null;
     if (!origin || typeof path !== 'string' || !path.startsWith('/') || path.startsWith('//')) throw new Error('Destino local no válido.');
     const url = new URL(path, origin);
     if (url.origin !== origin || url.username || url.password || url.hash) throw new Error('Destino local no válido.');
+    if (responseType !== 'json' && responseType !== 'bytes') throw new Error('Tipo de respuesta no válido.');
+    const multipart = body instanceof FormData;
+    if (multipart) {
+      if (Object.keys(headers).some(key => key.toLowerCase() === 'content-type')) throw new Error('FormData necesita su boundary automático.');
+      let formBytes = 0;
+      for (const [key, value] of body.entries()) {
+        formBytes += new TextEncoder().encode(key).length + 256;
+        if (typeof value === 'string') formBytes += new TextEncoder().encode(value).length;
+        else {
+          if (value.size > 4 * 1024 * 1024) throw new Error('Archivo del fixture supera4MiB; no se envió.');
+          formBytes += value.size + new TextEncoder().encode(value.name).length;
+        }
+      }
+      if (formBytes > 4 * 1024 * 1024 + 64 * 1024) throw new Error('FormData del fixture supera el límite; no se envió.');
+    }
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);
     const started = Date.now();
@@ -78,8 +94,8 @@ export class LocalHttp {
     try {
       const response = await this.fetchImpl(url, {
         method, redirect: 'manual', signal: controller.signal,
-        headers: { ...(target === 'app' ? { Origin: origin } : {}), ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}), ...headers, ...(jar?.size ? { Cookie: [...jar].map(([key, value]) => `${key}=${value}`).join('; ') } : {}) },
-        ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+        headers: { ...(target === 'app' ? { Origin: origin } : {}), ...(body !== undefined && !multipart ? { 'Content-Type': 'application/json' } : {}), ...headers, ...(jar?.size ? { Cookie: [...jar].map(([key, value]) => `${key}=${value}`).join('; ') } : {}) },
+        ...(body !== undefined ? { body: multipart ? body : JSON.stringify(body) } : {}),
       });
       event.status = response.status;
       if (response.status >= 300 && response.status < 400) { failure = 'redirect-rejected'; throw new Error(); }
@@ -91,12 +107,14 @@ export class LocalHttp {
           const { done, value } = await reader.read();
           if (done) break;
           size += value.byteLength;
-          if (size > 2 * 1024 * 1024) { await reader.cancel(); failure = 'response-too-large'; throw new Error(); }
+          if (size > (responseType === 'bytes' ? 4 : 2) * 1024 * 1024) { await reader.cancel(); failure = 'response-too-large'; throw new Error(); }
           chunks.push(value);
         }
       }
       let data = null;
-      if (size) {
+      if (responseType === 'bytes') {
+        data = { bytes: new Uint8Array(Buffer.concat(chunks)), contentType: response.headers.get('content-type'), cacheControl: response.headers.get('cache-control'), nosniff: response.headers.get('x-content-type-options') };
+      } else if (size) {
         try { data = JSON.parse(Buffer.concat(chunks).toString('utf8')); }
         catch { failure = 'invalid-json'; throw new Error(); }
       }

@@ -15,9 +15,13 @@ const noStore = { "Cache-Control": "no-store" };
 export async function GET(request: Request) {
   const actor = await actorFromRequest(request);
   if (!actor) return errorResponse(401, "Inicia sesión.");
+  if (!hasRole(actor, "superadmin", "direccion", "tutor")) return errorResponse(403, "Esta sección es para las familias y Dirección.");
   if (env.SCHOOL_DATA_PROVIDER === "supabase") {
     try { return Response.json(await readPrivacyDirectory(createSchoolDatabaseClient(env), actor), { headers: noStore }); }
-    catch { return errorResponse(503, "No se pudo consultar el registro escolar."); }
+    catch (cause) {
+      if (cause instanceof SupabaseDatabaseError && cause.status === 403) return errorResponse(403, "No tienes permiso para esta operación.");
+      return errorResponse(503, "No se pudo consultar el registro escolar.");
+    }
   }
   const db = getDb();
   if (hasRole(actor, "superadmin", "direccion")) {
@@ -25,7 +29,6 @@ export async function GET(request: Request) {
       .from(privacyRequests).innerJoin(students, eq(students.id, privacyRequests.studentId)).innerJoin(user, eq(user.id, privacyRequests.requesterId)).orderBy(desc(privacyRequests.updatedAt)).limit(200);
     return Response.json({ items }, { headers: noStore });
   }
-  if (!hasRole(actor, "tutor")) return errorResponse(403, "Esta sección es para las familias y Dirección.");
   const [items, linkedStudents] = await Promise.all([
     db.select({ id: privacyRequests.id, studentId: students.id, studentName: students.givenName, studentFamilyName: students.familyName, kind: privacyRequests.kind, details: privacyRequests.details, status: privacyRequests.status, responseNote: privacyRequests.responseNote, createdAt: privacyRequests.createdAt, updatedAt: privacyRequests.updatedAt, respondedAt: privacyRequests.respondedAt })
       .from(privacyRequests).innerJoin(students, eq(students.id, privacyRequests.studentId)).where(eq(privacyRequests.requesterId, actor.id)).orderBy(desc(privacyRequests.updatedAt)).limit(100),

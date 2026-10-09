@@ -60,7 +60,7 @@ test("authorized contacts lookup failure remains a genuine visible error", async
 });
 
 function panelHarness(canMessage = false, FormDataConstructor = FormData, uploadsReady = true) {
-  const state = { canMessage, uploadsReady, online: true, visible: true, routeRefreshes: 0, reloads: 0, deadlines: [], realtimeListeners: new Set(), calls: [], hooks: [], cursor: 0, pending: [], listeners: new Map(), timers: new Map(), timerId: 0 };
+  const state = { canMessage, contacts: [contact], uploadsReady, online: true, visible: true, routeRefreshes: 0, reloads: 0, deadlines: [], realtimeListeners: new Set(), calls: [], hooks: [], cursor: 0, pending: [], listeners: new Map(), timers: new Map(), timerId: 0 };
   const react = {
     useState: initial => { const index = state.cursor++; state.hooks[index] ??= { value: initial }; return [state.hooks[index].value, next => { state.hooks[index].value = typeof next === "function" ? next(state.hooks[index].value) : next; }]; },
     useRef: initial => { const index = state.cursor++; return state.hooks[index] ??= { current: initial }; },
@@ -76,7 +76,7 @@ function panelHarness(canMessage = false, FormDataConstructor = FormData, upload
     window: { location: { reload: () => { state.reloads++; } }, addEventListener: listen, removeEventListener: unlisten, setTimeout: (callback, delay) => { const id = ++state.timerId; state.timers.set(id, { callback, delay }); return id; }, clearTimeout: id => state.timers.delete(id) },
     fetch: (url, options) => new Promise((resolve, reject) => state.calls.push({ url, options, resolve, reject })),
   });
-  function render() { state.cursor = 0; return loaded.MessagingPanel({ canMessage: state.canMessage, contacts: [contact], communicationHours: DEFAULT_COMMUNICATION_HOURS, uploadsReady: state.uploadsReady }); }
+  function render() { state.cursor = 0; return loaded.MessagingPanel({ canMessage: state.canMessage, contacts: state.contacts, communicationHours: DEFAULT_COMMUNICATION_HOURS, uploadsReady: state.uploadsReady }); }
   function effects() { state.pending.splice(0).forEach(effect => effect()); }
   async function respond(index, payload, status = 200) { state.calls[index].resolve(Response.json(payload, { status })); await settle(); }
   return { state, render, effects, respond, realtime: update => [...state.realtimeListeners].forEach(listener => listener(update)), cleanup: () => state.hooks.forEach(hook => hook.cleanup?.()) };
@@ -88,6 +88,18 @@ test("real messaging panel effects make zero conversation requests and show info
   assert.match(text(tree), /Chat privado de docentes y familias/); assert.match(text(tree), /Tu cuenta no tiene habilitado este chat/);
   assert.doesNotMatch(text(tree), /Aún no hay conversaciones|No se cargaron|Escribe el primer mensaje/);
   assert.equal(elements(tree, "form").length, 0); assert.equal(elements(tree, "a")[0].props.href, "/comunicados"); fake.cleanup();
+});
+
+test("empty authorized chat without contacts explains school linking instead of suggesting an unavailable contact", () => {
+  const fake = panelHarness(true); fake.state.contacts = [];
+  const empty = fake.render();
+  assert.match(text(empty), /Aún no tienes contactos disponibles/);
+  assert.match(text(empty), /Pide a la escuela que revise la vinculación/);
+  assert.doesNotMatch(text(empty), /Elige un contacto|Iniciar conversación/);
+  assert.equal(elements(empty, "form").length, 0);
+  fake.state.contacts = [contact];
+  assert.match(text(fake.render()), /Elige un contacto autorizado/);
+  fake.cleanup();
 });
 
 test("real messaging panel fetches for authorized role, aborts loading when permission is removed and ignores late private history", async () => {

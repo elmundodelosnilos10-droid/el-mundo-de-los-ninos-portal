@@ -110,6 +110,9 @@ a { color: inherit; }
 .activity-heading h2 { font: 800 1.6rem Manrope, sans-serif; margin: 4px 0 0; }
 .activity-age { border-radius: 99px; padding: 7px 11px; background: #fff4d7; color: #775e21; font-size: .76rem; font-weight: 800; }
 .activity-prompt { margin: 22px 0 14px !important; color: #293c30 !important; font-size: 1.15rem; font-weight: 800; }
+.activity-seed-stimulus { width: min(100%, 260px); margin: 0 auto 18px; text-align: center; }
+.activity-seed-stimulus svg { display: block; width: 100%; height: auto; }
+.activity-seed-stimulus figcaption { color: #536759; font-size: .85rem; line-height: 1.5; }
 .activity-speak { border: 1px solid #d7e6d1; border-radius: 11px; padding: 9px 13px; color: #315f3d; background: #f4f8ef; font-weight: 800; cursor: pointer; }
 .activity-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(145px, 1fr)); gap: 12px; margin-top: 15px; }
 .activity-options button { display: grid; justify-items: center; gap: 8px; min-height: 105px; padding: 14px 10px; border: 1px solid #e4eade; border-radius: 16px; background: #fff; color: #293c30; font-weight: 800; cursor: pointer; }
@@ -118,8 +121,8 @@ a { color: inherit; }
 .activity-options button:disabled { opacity: .65; cursor: wait; }
 .activity-canvas { display: block; touch-action: none; width: 100%; height: auto; aspect-ratio: 1000 / 420; margin-top: 16px; border: 1px solid #e3eadc; border-radius: 17px; cursor: crosshair; }
 .activity-drawing-tools { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
-.activity-drawing-tools > div { display: flex; align-items: center; gap: 7px; margin-right: auto; }
-.activity-drawing-tools > div button { width: 28px; height: 28px; border: 2px solid #fff; outline: 1px solid #d6dfd2; border-radius: 50%; cursor: pointer; }
+.activity-drawing-tools > div { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; margin-right: auto; }
+.activity-drawing-tools > div button { width: 44px; height: 44px; flex: 0 0 44px; border: 2px solid #fff; outline: 1px solid #d6dfd2; border-radius: 50%; cursor: pointer; }
 .activity-drawing-tools > div button.chosen { outline: 3px solid #86a77a; }
 .activity-drawing-tools .button-secondary, .activity-drawing-tools .button-primary { border-radius: 10px; padding: 9px 12px; font-weight: 800; cursor: pointer; }
 .activity-drawing-tools .button-secondary { border: 1px solid #d8e2d4; background: #fff; color: #516852; }
@@ -231,7 +234,7 @@ a { color: inherit; }
 body {
   background: #f6f8ef;
   color: #263b2e;
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: "DM Sans", Arial, Helvetica, sans-serif;
 }
 
 .topbar-actions,.panel-heading,.button-row,.inline-upload,.contact-list { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
@@ -394,7 +397,7 @@ body {
   .activity-options { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .activity-drawing-tools { align-items: stretch; }
   .activity-drawing-tools > div { width: 100%; }
-  .activity-drawing-tools > div button { width: 36px; height: 36px; }
+  .activity-drawing-tools > div button { width: 44px; height: 44px; }
   .activity-drawing-tools .button-secondary, .activity-drawing-tools .button-primary { flex: 1 1 140px; }
   .message-history article { max-width: 100%; }
   .message-history { max-height: min(55svh, 430px); }

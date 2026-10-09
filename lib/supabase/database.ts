@@ -167,7 +167,7 @@ export function createSupabaseDatabaseClient(
     } catch {
       throw dbError("unavailable", operation);
     }
-    if (!response.ok) throw dbError("rejected", operation, response.status);
+    if (!response.ok) throw dbError("rejected", operation, await rejectedRpcStatus(response, operation));
 
     const count = init.countRequested ? parseContentRange(response.headers.get("content-range")) : null;
     if (response.status === 204 || response.status === 205) return { data: [], count };
@@ -300,6 +300,42 @@ type DatabaseOperation = "select" | "insert" | "update" | "delete" | "rpc";
 
 function dbError(code: SupabaseDatabaseError["code"], operation: DatabaseOperation, status?: number) {
   return new SupabaseDatabaseError(code, operation, status);
+}
+
+/** PostgREST maps PL/pgSQL P0002 to HTTP500. School RPCs deliberately use
+ * that SQLSTATE for an unavailable/foreign resource; route contracts use404.
+ * Interpret only this exact code on RPC500 JSON; never retain reason/details.
+ */
+async function rejectedRpcStatus(response: Response, operation: DatabaseOperation) {
+  if (operation !== "rpc" || response.status !== 500
+    || !/^application\/json(?:\s*;|$)/i.test(response.headers.get("content-type") ?? "")) return response.status;
+  const reader = response.body?.getReader();
+  if (!reader) return response.status;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<number>(resolve => {
+    timer = setTimeout(() => resolve(response.status), 2000);
+  });
+  const read = (async () => {
+    const chunks: Uint8Array[] = []; let total = 0;
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > 16 * 1024) return response.status;
+      chunks.push(value);
+    }
+    const bytes = new Uint8Array(total); let offset = 0;
+    for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+    const parsed: unknown = JSON.parse(new TextDecoder().decode(bytes));
+    return parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)
+      && "code" in parsed && parsed.code === "P0002" ? 404 : response.status;
+  })().catch(() => response.status);
+  try { return await Promise.race([read, timeout]); }
+  finally {
+    if (timer) clearTimeout(timer);
+    // Cancel any stalled/oversized stream without blocking on its cancellation.
+    void reader.cancel().then(() => reader.releaseLock()).catch(() => undefined);
+  }
 }
 
 function safeBaseUrl(value: string | undefined, operation: DatabaseOperation) {

@@ -137,6 +137,21 @@ function componentHarness(subscribeRealtime) {
 function elements(tree, type) { const found = []; function walk(value) { if (!value || typeof value !== "object") return; if (Array.isArray(value)) { value.forEach(walk); return; } if (value.type === type) found.push(value); walk(value.props?.children); } walk(tree); return found; }
 function text(value) { if (Array.isArray(value)) return value.map(text).join(""); return value && typeof value === "object" ? text(value.props?.children) : typeof value === "string" || typeof value === "number" ? String(value) : ""; }
 
+test("closing the real notice panel restores focus to its Avisos trigger", () => {
+  const fake = componentHarness(); let tree = fake.render();
+  const trigger = elements(tree, "button")[0];
+  let focusCalls = 0;
+  trigger.props.ref.current = { focus: () => { focusCalls++; } };
+  trigger.props.onClick(); tree = fake.render();
+  assert.equal(elements(tree, "button")[0].props["aria-expanded"], true);
+  elements(tree, "button").find(button => text(button) === "Cerrar").props.onClick();
+  tree = fake.render();
+  assert.equal(focusCalls, 1);
+  assert.equal(elements(tree, "button")[0].props["aria-expanded"], false);
+  assert.equal(elements(tree, "section").length, 0);
+  fake.cleanup();
+});
+
 test("actual notification component effects show loading, confirmed empty and failure/retry without false empty or replacing valid rows", async () => {
   const fake = componentHarness(); let tree = fake.render(); fake.runEffects();
   elements(tree, "button")[0].props.onClick(); tree = fake.render(); assert.match(text(tree), /Cargando avisos/); assert.doesNotMatch(text(tree), /No tienes avisos disponibles/);

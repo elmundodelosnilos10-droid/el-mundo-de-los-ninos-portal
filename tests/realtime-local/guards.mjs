@@ -82,6 +82,10 @@ export function assertLocalTransportUrl(value, origins, protocol) {
     !origins.has(url.origin.replace(/^ws:/,"http:"))) fail("external_transport_blocked");
   return url;
 }
+/** Native WebSocket accepts HTTP URLs and normalizes them to WS. Guard that same local origin. */
+export function assertLocalWebSocketUrl(value, origins) {
+  return assertLocalTransportUrl(String(value).replace(/^http:/, "ws:"), origins, "ws:");
+}
 export function assertSafeSseEnvelope(event, data) {
   if (!data || typeof data!=="object" || Array.isArray(data)) fail("private_sse_content");
   const keys=Object.keys(data);

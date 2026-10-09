@@ -4,7 +4,7 @@ Actualizado: 8 de octubre de 2026. Fuente del procedimiento: `scripts/supabase-s
 
 ## Estado comprobado
 
-El hosting publicado es [Vercel](https://el-mundo-de-los-ninos-portal.vercel.app), despliegue READY `dpl_xkMxs8YubpLYXSrSADubeUpUXVXC`, con Supabase escolar como Auth/datos/Storage. Hay 24 migraciones instaladas de las versiones base 08 a la 28. Biblioteca 27 y calendario 28 pasaron pruebas PostgreSQL con ROLLBACK; el despliegue integrado está publicado en Vercel y registrado en la guía de hosting. Ver [Hosting Vercel](hosting-vercel.md), [Verificación Vercel/Supabase](verificacion-vercel-supabase-20261008.md) y [Estado de requisitos](estado-requisitos.md).
+El hosting publicado es [Vercel](https://el-mundo-de-los-ninos-portal.vercel.app), despliegue READY `dpl_3ABfnzZfGT84WHgjZzXzZzfWzZpw`, con Supabase escolar como Auth/datos/Storage. Hay 25 migraciones instaladas: versiones base 08 a la 28 y publicación Realtime 30. La migración 29 de acceso para respaldos no está aplicada. Biblioteca 27 y calendario 28 pasaron pruebas PostgreSQL con ROLLBACK; el despliegue integrado está publicado en Vercel y registrado en la guía de hosting. Ver [Hosting Vercel](hosting-vercel.md), [Verificación Vercel/Supabase](verificacion-vercel-supabase-20261008.md) y [Estado de requisitos](estado-requisitos.md).
 
 El intento real de respaldo se detuvo por **HTTP403 al leer `profiles`**. Falta confirmar permisos de lectura `service_role` sobre las **33 tablas escolares**. Una clave configurada en Vercel no acredita esos permisos. Las cargas de archivos también siguen bloqueadas sin scanner real. No se debe presentar un directorio parcial de ese intento como una copia válida: la herramienta crea `manifest.enc` solo al completar la exportación y comprobar su estabilidad.
 

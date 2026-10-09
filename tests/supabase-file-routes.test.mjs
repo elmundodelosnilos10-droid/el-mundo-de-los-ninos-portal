@@ -169,6 +169,20 @@ test("missing RLS file returns 404 without D1 fallback or storage access", async
   assert.equal(runtime.state.storage.length, 0);
 });
 
+test("disabled recordings return 404 for every school role before private storage access", async () => {
+  for (const role of ["superadmin", "direccion", "docente", "tutor", "alumno"]) {
+    const runtime = harness("app/api/files/[id]/route.ts");
+    runtime.state.actor.roles = [role]; runtime.state.filePurpose = "recording";
+    const response = await runtime.GET(new Request(`${origin}/api/files/${ids.file}`), context(ids.file));
+    assert.equal(response.status, 404);
+    assert.deepEqual(await response.json(), { error: "Archivo no disponible." });
+    assert.equal(runtime.state.storage.length, 0);
+    assert.equal(runtime.state.d1Calls, 0);
+    assert.equal(runtime.state.calls.length, 1);
+    assert.equal(runtime.state.calls[0].url.pathname, "/rest/v1/files");
+  }
+});
+
 test("missing Supabase JWT returns an explicit unavailable response instead of consulting D1", async () => {
   for (const route of ["app/api/files/route.ts", "app/api/materials/[id]/route.ts", "app/api/materials/[id]/replace/route.ts", "app/api/files/[id]/route.ts"]) {
     const runtime = harness(route); runtime.state.actor.supabaseAuth = null;

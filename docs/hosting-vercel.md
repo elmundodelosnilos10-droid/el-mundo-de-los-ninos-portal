@@ -82,3 +82,27 @@ El scanner continúa bloqueando cargas hasta disponer de servicio, motor y firma
 ## Actualización Realtime · 23:09 CDMX
 
 Producción READY `dpl_3ABfnzZfGT84WHgjZzXzZzfWzZpw`, URL única https://el-mundo-de-los-ninos-portal-daplq52b1-pandito.vercel.app, promovida al dominio canónico. Realtime 30 autorizado/aplicado: 25 versiones SQL; el permiso de respaldo 29 sigue pendiente. Indicador no secreto `SCHOOL_REALTIME_PROVIDER=supabase` configurado solo en Production. Conexión real SSE/Supabase comprobada con la administradora. 446 pruebas unitarias,262 smoke D1 aislados, lint y builds local/remoto pasaron;19 controles HTTP pasaron en stage y producción. La entrega de eventos entre familias aún requiere ensayo aislado.
+
+## Versión visual publicada · 9 de octubre de 2026
+
+Producción **READY `dpl_4sXXo1ay6qqbsTZJbYTmMHjDSqjB`**, URL única https://el-mundo-de-los-ninos-portal-2nurcwi89-pandito.vercel.app, promovida a https://el-mundo-de-los-ninos-portal.vercel.app. El usuario decidió conservar el hosting en el equipo `pandito`; el traslado a otra cuenta quedó cancelado y no requiere continuar la verificación telefónica.
+
+La versión conserva el logo y los colores escolares. Incluye navegación con iconos consistentes, accesos por rol, saludo breve, métricas en dos columnas en celular, estados vacíos con instrucciones y enlaces, foco visible y controles de al menos 44 px. Se verificó el inicio administrativo con sesión real en escritorio y emulación 390 × 844; no desborda horizontalmente y las métricas forman dos columnas. No se crearon alumnos ni registros de prueba en producción.
+
+La fuente pasó **512 pruebas unitarias**, ESLint sin avisos, TypeScript y las compilaciones Next/Sites. La compilación remota pasó; **19 controles HTTP** pasaron en el despliegue antes de promoverlo y otros 19 en el dominio canónico. Los intentos del runner que exigían JSON en un 405 vacío y omitían Origin en un POST se conservaron; se corrigieron esas expectativas manteniendo la protección CSRF.
+
+Evidencia privada: `outputs/vercel-release-presentable-20261009.json`, las dos capturas `portal-production-presentable-{desktop,mobile}-20261009.jpg` y los informes `vercel-presentable-{stage,production}-http-20261009-retry2.json`. Los ensayos locales reales de archivos/antivirus y restauración constan en `docs/verificacion-cierre-local-20261008.md`; no habilitan automáticamente el scanner ni los permisos de respaldo del proyecto escolar. La cuenta administrativa y sus permisos permanecen verificados; correo, configuración escolar, pruebas físicas y aprobación operativa siguen en el registro de requisitos.
+
+## Correcciones publicadas el 9 de octubre de 2026
+
+La versión `dpl_44sWbxTREwV9Fu3WRSCCSH2ZBmaU` quedó READY y se promovió al dominio habitual desde el mismo build previamente comprobado. URL de la versión: https://el-mundo-de-los-ninos-portal-k2kfiwfjw-pandito.vercel.app.
+
+Pasaron 538 pruebas sin fallos, lint sin advertencias, TypeScript y las compilaciones Next.js/Sites. La versión pasó 19 controles HTTP antes de promover y otros 19 en el dominio habitual. El inventario real de subida del CLI excluyó configuraciones, temporales y evidencias; la búsqueda de tres valores privados existentes no encontró coincidencias.
+
+Correcciones: maceta con tres semillas y paleta de 44 px; guardado de actividades sin mezclar hijos ni perder historial ante respuestas tardías; cierre de sesión con error y reintento; foco de Avisos restaurado al cerrar; descarga de grabaciones existentes bloqueada con404 antes de Storage para todos los roles; solicitudes de privacidad rechazadas con403 para roles no permitidos.
+
+La revisión autenticada de administración abrió las 18 pestañas a 320×740 sin error de aplicación ni desbordamiento del documento. El panel principal también se capturó a 390×844 con sus cuatro métricas en dos columnas, y en escritorio se verificó el foco de Avisos. Son vistas móviles emuladas de una escuela vacía: no acreditan un dispositivo físico ni el recorrido familiar completo en producción.
+
+Evidencias locales: `outputs/vercel-release-final-20261009.json`, `outputs/release-validation-final3-20261009.json`, `outputs/portal-production-final-pages-mobile-20261009.json` y capturas `portal-production-final-desktop-20261009.jpg` / `portal-production-final-mobile-20261009.jpg`. Los informes anteriores se conservan.
+
+La conexión HTTPS de avisos se observó con la cuenta administrativa existente. El ensayo Realtime aislado pasó entrega, aislamiento y revocación con un dispatcher exclusivo del harness; no sustituye la aceptación publicada entre docentes/familias. Siguen pendientes el analizador privado publicado, la entrega de correo comprobada, el permiso adicional de respaldo y la revisión operativa/privacidad de la escuela. La transferencia de cuenta Vercel continúa diferida por decisión del usuario.

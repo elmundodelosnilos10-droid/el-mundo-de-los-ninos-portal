@@ -144,3 +144,42 @@ test('actual loopback HTTP transport sends JSON, Origin and private cookies with
     assert.ok(!JSON.stringify(evidence).includes('private-cookie')); assert.equal(evidence[0].status, 201);
   } finally { await new Promise(resolve => server.close(resolve)); }
 });
+
+test('multipart uses native boundary and rejects oversized files before any network request', async () => {
+  let calls = 0; const evidence = [];
+  const http = new LocalHttp({ ...config, evidence, fetchImpl: async (_url, options) => {
+    calls++; assert.ok(options.body instanceof FormData); assert.equal(options.headers['Content-Type'], undefined);
+    assert.equal(options.body.get('purpose'), 'material'); return reply({ id: 'synthetic-file' }, 201);
+  } });
+  const form = new FormData(); form.set('purpose', 'material'); form.set('file', new Blob(['%PDF-1.4 synthetic-private-bytes'], { type: 'application/pdf' }), 'synthetic.pdf');
+  await http.request('app', '/api/files', { method: 'POST', body: form, statuses: [201] }); assert.equal(calls, 1);
+  assert.ok(!JSON.stringify(evidence).includes('synthetic-private-bytes'));
+  await assert.rejects(http.request('app', '/api/files', { method: 'POST', body: form, headers: { 'Content-Type': 'multipart/form-data' } }), /boundary/);
+  const oversized = new FormData(); oversized.set('file', new Blob([new Uint8Array(4 * 1024 * 1024 + 1)]), 'large.pdf');
+  await assert.rejects(http.request('app', '/api/files', { method: 'POST', body: oversized }), /supera4MiB/);
+  assert.equal(calls, 1);
+});
+
+test('private binary responses are compared in memory and never included in evidence', async () => {
+  const bytes = new TextEncoder().encode('%PDF-1.4 synthetic-private-preview'); const evidence = [];
+  const http = new LocalHttp({ ...config, evidence, fetchImpl: async () => new Response(bytes, { headers: { 'content-type': 'application/pdf', 'cache-control': 'private, no-store', 'x-content-type-options': 'nosniff' } }) });
+  const result = await http.request('app', '/api/files/10000000-0000-4000-8000-000000000001', { responseType: 'bytes' });
+  assert.deepEqual(result.bytes, bytes); assert.equal(result.cacheControl, 'private, no-store');
+  assert.ok(!JSON.stringify(evidence).includes('synthetic-private-preview')); assert.ok(!JSON.stringify(evidence).includes('10000000-0000-4000-8000-000000000001'));
+});
+
+test('optional files coverage is explicit and has no silent fallback for malformed configuration', () => {
+  assert.equal(localConfig({ ...validEnv, LOCAL_SCHOOL_HTTP_FILES: 'required' }).includeFiles, true);
+  assert.throws(() => localConfig({ ...validEnv, LOCAL_SCHOOL_HTTP_FILES: 'true' }));
+});
+
+test('synthetic PDF has a real catalog, page, content stream and byte-correct xref', async () => {
+  const { syntheticPdf, syntheticUpload } = await import('../scripts/supabase-school-http-local-files.mjs');
+  const bytes = syntheticPdf('Synthetic private school document.'); const text = new TextDecoder().decode(bytes);
+  assert.ok(text.startsWith('%PDF-1.4')); assert.ok(text.includes('/Type /Catalog')); assert.ok(text.includes('/Type /Page'));
+  const xref = Number(text.match(/startxref\n(\d+)/)[1]); assert.equal(text.slice(xref, xref + 4), 'xref');
+  const offsets = [...text.matchAll(/^(\d{10}) 00000 n /gm)].map(match => Number(match[1]));
+  offsets.forEach((offset, index) => assert.ok(text.slice(offset).startsWith(`${index + 1} 0 obj`)));
+  const form = syntheticUpload({ purpose: 'material' }, bytes); assert.equal(form.get('file').type, 'application/pdf'); assert.equal(form.get('file').size, bytes.length);
+  assert.throws(() => syntheticPdf('Real\nname\nnot-permitted'));
+});

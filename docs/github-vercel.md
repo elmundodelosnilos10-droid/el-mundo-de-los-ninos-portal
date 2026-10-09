@@ -12,6 +12,8 @@ Se verificaron 472 archivos remotos y el commit inicial `9e925d2c236b2994132c37f
 
 https://el-mundo-de-los-ninos-portal.vercel.app sigue siendo la aplicación publicada. Supabase continúa como servicio de cuentas y datos.
 
+El usuario decidió conservar el hosting en la cuenta Vercel actual y continuar terminando la plataforma. No se transfirió el proyecto. El registro con el correo escolar llegó al requisito de verificación telefónica; esa verificación quedó pendiente y no es necesaria para continuar trabajando en el hosting existente.
+
 La conexión automática del repositorio al proyecto Vercel aún no está completada. `vercel git connect` devolvió `github_login_connection_required`: primero se requiere vincular la cuenta GitHub escolar al usuario Vercel que tiene acceso al proyecto. No se cambiaron permisos ni conexiones de acceso de Vercel durante ese intento.
 
 Al configurar la integración, limitar el acceso de la aplicación Vercel al repositorio escolar. Mantener las claves de servidor fuera de Git, conservar la protección de forks y comprobar el build y las rutas privadas antes de promover una nueva versión.
@@ -19,3 +21,7 @@ Al configurar la integración, limitar el acceso de la aplicación Vercel al rep
 ## Checkout de publicación
 
 La primera subida se preparó en un checkout independiente `work/github-publication`. El checkout original conserva el trabajo y su historial. Las modificaciones siguientes deben sincronizarse deliberadamente, revisar los archivos elegidos y publicarse como nuevos commits; no reemplazar ni forzar el historial remoto.
+
+## Actualización del 9 de octubre de 2026
+
+Esta actualización del código incorpora el diseño adaptable y las correcciones verificadas con 538 pruebas: guardado de actividades, salida de sesión, foco de avisos, bloqueo de grabaciones y respuestas de privacidad. Incluye los runners de aceptación aislada HTTP, Realtime y respaldo/restauración, junto con documentación que diferencia las pruebas locales de lo todavía pendiente en producción. El corte se sincroniza deliberadamente al checkout de publicación y se comprueba por hashes antes de commit/push; no se incluye el historial original, secretos, archivos temporales, respaldos ni capturas. La evidencia del push y del árbol remoto se conserva localmente en `outputs/github-publication-remote-final-20261009.json`.

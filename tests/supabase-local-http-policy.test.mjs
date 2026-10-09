@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { permitsIsolatedSupabaseHttp } from '../lib/supabase/local-http-test-policy.ts';
 import { createSupabaseAuthClient } from '../lib/supabase/auth.ts';
+import { createPrivateStorageClient } from '../lib/supabase/storage.ts';
 import { createSupabaseDatabaseClient } from '../lib/supabase/database.ts';
 
 const testEnv = { NODE_ENV: 'test', SCHOOL_LOCAL_SUPABASE_HTTP: 'isolated-test' };
@@ -62,4 +63,44 @@ test('HTTPS production clients keep working with opt-in present and Vercel set',
     await auth.signIn('synthetic@example.test', 'synthetic-password-only'); await db.select('synthetic-user-token', 'students', { columns: ['id'], limit: 1 });
     assert.equal(requests.length, 2); assert.ok(requests.every(url => url.startsWith(origin)));
   });
+});
+
+test('actual Next config skips loopback normalization exclusively for the explicitly isolated test origin', async () => {
+  const originalOrigin = process.env.APP_ORIGIN;
+  const scenarios = [
+    [{ ...testEnv, NODE_ENV: 'development' }, 'http://127.0.0.1:5199', true],
+    [{ ...testEnv, NODE_ENV: 'production' }, 'http://127.0.0.1:5199', false],
+    [{ ...testEnv, VERCEL: '1' }, 'http://127.0.0.1:5199', false],
+    [testEnv, 'http://127.0.0.1:5199/path', false],
+    [testEnv, 'http://localhost:5199', false],
+    [testEnv, 'https://school.example', false],
+    [{ NODE_ENV: 'development' }, 'http://127.0.0.1:5199', false],
+  ];
+  try {
+    for (let index = 0; index < scenarios.length; index++) {
+      const [environment, origin, expected] = scenarios[index];
+      process.env.APP_ORIGIN = origin;
+      await withEnv(environment, async () => {
+        const { default: config } = await import(`../next.config.ts?isolated-policy=${index}`);
+        assert.equal(config.skipMiddlewareUrlNormalize === true, expected);
+      });
+    }
+  } finally { if (originalOrigin === undefined) delete process.env.APP_ORIGIN; else process.env.APP_ORIGIN = originalOrigin; }
+});
+
+
+test('private Storage has the same local-only policy with server key and redirect safety intact', async () => {
+  for (const [environment, allowed] of [[testEnv, true], [{ ...testEnv, NODE_ENV: 'production' }, false], [{ ...testEnv, VERCEL: '1' }, false], [{ NODE_ENV: 'development' }, false]]) {
+    await withEnv(environment, async () => {
+      let calls = 0;
+      const storage = createPrivateStorageClient({ url: local, serviceRoleKey: 'synthetic-local-server-key', bucket: 'school-files' }, async (url, options) => {
+        calls++; assert.equal(String(url), `${local}/storage/v1/object/school-files/private/material/synthetic-file`);
+        assert.equal(options.headers.apikey, 'synthetic-local-server-key'); assert.equal(options.redirect, 'error');
+        return new Response(null, { status: 200 });
+      });
+      const work = storage.upload('private/material/synthetic-file', new TextEncoder().encode('%PDF-1.4 synthetic only'), { contentType: 'application/pdf' });
+      if (allowed) await work; else await assert.rejects(work);
+      assert.equal(calls, allowed ? 1 : 0);
+    });
+  }
 });

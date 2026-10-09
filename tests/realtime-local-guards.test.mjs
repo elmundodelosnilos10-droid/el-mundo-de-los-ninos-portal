@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { assertLoopbackUrl, localConfiguration, readLocalCredentials, validateLocalCredentials, assertSyntheticUser, assertLocalUserSession, assertLocalTransportUrl, assertSafeSseEnvelope } from "./realtime-local/guards.mjs";
+import { assertLoopbackUrl, localConfiguration, readLocalCredentials, validateLocalCredentials, assertSyntheticUser, assertLocalUserSession, assertLocalTransportUrl, assertLocalWebSocketUrl, assertSafeSseEnvelope } from "./realtime-local/guards.mjs";
 const id="a1000000-0000-4000-8000-000000000001";
 const token = claims => ["header",Buffer.from(JSON.stringify({iss:"supabase-demo", exp:Math.floor(Date.now()/1000)+300,...claims})).toString("base64url"),"synthetic_signature"].join(".");
 const credentials = () => ({anonKey:token({role:"anon"}),serviceRoleKey:token({role:"service_role"})});
@@ -55,3 +55,9 @@ test("real SSE receipt checker allows only the actual content-free protocol", ()
  for(const [event,data] of [["ready",{}],["end",{reason:"unauthorized"}],["invalidate",{scope:"notifications"}],["invalidate",{scope:"all"}],["invalidate",{scope:"messages",conversationId:id}]]) assert.doesNotThrow(()=>assertSafeSseEnvelope(event,data));
  for(const [event,data] of [["ready",{jwt:"private"}],["end",{reason:"redirect"}],["invalidate",{scope:"notifications",title:"private"}],["invalidate",{scope:"messages",conversationId:id,body:"private"}],["invalidate",{scope:"messages",conversationId:"invalid"}]])assert.throws(()=>assertSafeSseEnvelope(event,data));
 });
+
+ test("native WebSocket HTTP normalization preserves the exact loopback origin guard",()=>{
+ const origins=new Set(["http://127.0.0.1:54321"]);
+ assert.equal(assertLocalWebSocketUrl("http://127.0.0.1:54321/realtime/v1/websocket?apikey=synthetic",origins).protocol,"ws:");
+ for(const address of ["https://127.0.0.1:54321/realtime/v1","http://localhost:54321/realtime/v1","http://remote.example:54321/realtime/v1","http://127.0.0.1:54322/realtime/v1","http://u:p@127.0.0.1:54321/realtime/v1"]){assert.throws(()=>assertLocalWebSocketUrl(address,origins));}
+ });

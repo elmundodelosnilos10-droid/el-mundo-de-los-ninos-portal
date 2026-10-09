@@ -1,78 +1,55 @@
-# Guía de uso para dirección y docentes
+# Puesta en marcha para dirección y docentes
 
-## Antes de empezar
+**Actualizada: 9 de octubre de 2026.** La [guía rápida](manual-uso.md) explica cada sección a dirección, maestras y familias. Esta guía organiza la preparación y la rutina escolar.
 
-El portal guarda los registros escolares en la base de datos y los archivos en almacenamiento privado. La página de inicio de sesión está disponible públicamente, pero se necesita una cuenta escolar autorizada para acceder a las funciones. No compartas contraseñas por grupos ni registres expedientes reales mientras estén pendientes las revisiones de privacidad y operación indicadas en `auditoria-y-plan.md`.
+Se conserva el hosting Vercel actual en el equipo **pandito**, por petición del usuario. El repositorio GitHub privado escolar ya está creado y verificado. No se necesita trasladar el hosting para presentar el portal.
 
-La cuenta inicial de Dirección se invitó con el correo proporcionado por la escuela. Cuando se acepte la invitación y se verifique el acceso al sitio publicado, Dirección podrá enviar invitaciones a docentes y tutores desde **Cuentas de acceso**. Cada persona crea su propia contraseña desde el enlace que recibe. Si se necesita cambiar el correo de acceso, debe actualizarse de forma coordinada en Supabase Auth y en el perfil escolar; por ahora, solicita ese cambio a la administración técnica. Al desactivar una cuenta, se cierran sus sesiones y se conservan sus registros escolares.
+## Preparar las cuentas y grupos
 
-En **Administrar cuenta**, dirección puede cambiar el tipo de acceso entre docente y tutor. Solo superadministración puede asignar o administrar cuentas de dirección. Cambiar el tipo cierra las sesiones existentes; revisa también las asignaciones de grupo o los vínculos familiares antes de hacer el cambio.
+1. Superadministración comprueba el acceso administrativo al portal publicado y autoriza a las personas que administrarán dirección.
+2. Dirección crea ciclo y grupos en **Grupos**, con etapa y fechas correctas.
+3. Dirección invita a docentes y tutores desde **Cuentas**. Primero prueba una invitación y recuperación con un destinatario autorizado: que el correo llegue, que el enlace abra el portal y que la persona pueda crear su contraseña privada.
+4. Dirección asigna las docentes a sus grupos; registra alumnos y vincula tutores desde el expediente. Revisa cuenta, relación familiar e inscripción activa antes de compartir información.
+5. Cada docente y tutor entra con su cuenta propia y verifica que aparezcan únicamente los grupos o hijos autorizados.
 
-## Configuración inicial de dirección
+La escuela administra nombre, rol y estado de la cuenta. Desactivar el perfil bloquea las solicitudes escolares posteriores y conserva el historial; no revoca por sí solo todos los tokens Auth. Cambiar el correo requiere coordinación técnica entre Auth y el perfil, como explica [Cuentas Supabase](cuentas-supabase.md).
 
-1. En **Ciclos y grupos**, crea el ciclo escolar con sus fechas.
-2. Crea un grupo y elige la etapa correcta: lactantes, maternal, prekínder o preescolar.
-3. En **Cuentas de acceso**, envía la invitación de cada docente y tutor autorizado. Dirección puede crear estas cuentas; la cuenta superadministradora es la que autoriza nuevas cuentas de dirección.
-4. En **Ciclos y grupos**, asigna cada docente a sus grupos.
-5. En **Alumnos**, registra al niño y su grupo. Abre su expediente y vincula las cuentas de sus tutores con el parentesco correspondiente. Verifica que el correo sea el de la cuenta que ya creaste.
-6. Revisa el panel de inicio: los indicadores se calculan con los registros actuales. Si todavía no hay ciclos, grupos o alumnos, aparecerán vacíos o en cero.
+## Preparar la clase
 
-Las bajas son lógicas: desactivan el acceso o cierran la inscripción, pero conservan el historial escolar. Para reactivar a un alumno, dirección debe asignarle un grupo activo.
+- Programa el calendario en hora de Ciudad de México. Las tareas con fecha límite también aparecen en agenda.
+- Crea Google Meet fuera del portal; publica el enlace en **Clases virtuales** y comprueba la admisión con el organizador. Las grabaciones están apagadas.
+- Publica instrucciones breves y recursos adecuados a la etapa. Biblioteca organiza guías, canciones, vocabulario y audios por grupo/categoría; permite buscar, previsualizar y descargar.
+- Las cargas nuevas admiten hasta **4 MB por archivo**. Cuando la recepción segura no esté preparada, los controles aparecen desactivados; el servicio debe configurarse y probarse en el hosting publicado. El ensayo local real ya pasó y no sustituye esa operación.
 
-## Rutina de las docentes
+## Durante y después
 
-### Clases y calendario
+1. Registra asistencia por grupo/fecha y guarda. El portal no obtiene la asistencia automáticamente de Meet.
+2. En **Revisar entregas**, consulta la nota y archivos autorizados; guarda observación y estado. Prekínder/preescolar admiten evaluación formativa; lactantes/maternal usan observaciones cualitativas.
+3. En **Seguimiento**, registra hechos y avances, indicando qué puede ver la familia. No registres diagnósticos médicos o psicológicos.
+4. En **Comunicados**, publica avisos y confirma lectura cuando corresponda. El chat privado de **Comunicación** está disponible para docentes y tutores vinculados; la administración sin esos roles conserva el formulario de horario y no accede automáticamente a conversaciones privadas.
+5. Consulta **Avisos**. La conexión activa puede adelantar una actualización; las consultas periódicas siguen como respaldo. No se envía push ni correo por cada actividad.
 
-- En **Clases virtuales**, programa el título, grupo, docente y horario de Ciudad de México.
-- Hasta que la escuela configure Google Workspace y la integración correspondiente, la docente debe crear la reunión en Google Meet y pegar el enlace. El portal solo lo muestra a integrantes autorizados del grupo; Meet conserva sus propios controles de acceso.
-- Las grabaciones están desactivadas. No subas ni compartas grabaciones de menores.
-- En **Calendario**, registra reuniones, eventos y fechas importantes. Las tareas publicadas con fecha límite también aparecen en la agenda.
-- En la vista **Agenda**, puedes corregir o cancelar eventos de tu grupo. Las familias autorizadas reciben un aviso; las clases y tareas se administran desde sus propias secciones.
+## Asistencia y reportes
 
-### Tareas y entregas
+Las familias pueden enviar una justificación pendiente. Una docente asignada o dirección la acepta o rechaza con respuesta; aceptar actualiza la asistencia a falta justificada y conserva el motivo. El historial individual muestra los registros y el porcentaje. La fórmula actual suma presentes y retardos entre todos los registros; la falta justificada cuenta como ausencia. Dirección debe confirmar esa regla con su política.
 
-1. En **Tareas y entregas**, publica el título, instrucciones para la familia, grupo y fecha límite. Puedes adjuntar guías PDF, imágenes o audio.
-2. La familia verá la tarea y podrá enviar una evidencia PDF o imagen por cada hijo inscrito en ese grupo.
-3. Abre **Revisar entregas** para consultar los archivos y la nota enviada. Añade una observación, selecciona **Revisada** o **Completada** y guarda.
-4. La familia ve los estados **Pendiente**, **Vencida**, **Entregada**, **Revisada** o **Completada**. El estado vencido aparece cuando pasa la fecha límite sin una entrega.
-5. En prekínder y preescolar puedes añadir una evaluación formativa: Logrado, En proceso o Con acompañamiento. Para lactantes y maternal, usa observaciones cualitativas; no hay calificación académica.
+Los reportes se descargan en Excel, PDF o CSV para periodos de hasta 366 días. Docentes consultan sus grupos; dirección puede seleccionar todos. Las correcciones y exportaciones dejan registro de auditoría.
 
-### Biblioteca de actividades
+## Privacidad, bajas y continuidad
 
-En **Biblioteca**, elige el grupo, escribe el nombre del recurso, selecciona una categoría y adjunta el archivo. Las familias solo pueden consultar y descargar materiales de sus grupos. Una docente asignada puede reemplazar un archivo o retirarlo; esas acciones quedan registradas. Las imágenes nuevas se limpian de metadatos EXIF/XMP. La carga de archivos permanece bloqueada hasta configurar el análisis de seguridad requerido; no uses documentos reales mientras siga pendiente.
+Dirección debe revisar y aprobar aviso, representación familiar, autorizaciones, conservación de información y proceso de solicitudes. Superadministración publica una versión del aviso ya aprobada en **Estado del sistema**. **Autorizaciones** registra decisiones; **Solicitudes de privacidad** registra revisión y respuesta. El portal no sustituye esas decisiones escolares.
 
-### Asistencia
-
-En **Asistencia**, selecciona grupo y fecha. Marca presente, retardo, ausente o falta justificada. Si eliges **Falta justificada**, escribe el motivo; el sistema no guarda ese estado sin una explicación. Guarda la lista. Dirección y docentes autorizadas pueden corregir el registro después; la acción queda en auditoría.
-
-Las familias también pueden enviar una justificación desde esa pantalla. La solicitud aparece como pendiente; una docente asignada o dirección puede aceptarla o rechazarla. Aceptarla actualiza el registro de asistencia a **Falta justificada** y conserva el motivo. La familia recibe un aviso interno y puede consultar la respuesta. Una solicitud pendiente o aceptada no se duplica para el mismo alumno y fecha; si se rechaza, la familia puede volver a enviarla.
-
-En **Historial individual**, elige al alumno y el periodo para consultar sus registros, motivos y porcentaje. El porcentaje se calcula como presentes más retardos entre todos los registros del periodo; una falta justificada cuenta como ausencia. Esta regla queda visible en pantalla para que dirección la revise con la política escolar. En **Reporte de asistencia**, docentes descargan el historial de sus grupos asignados; dirección puede elegir un grupo o todos los grupos de la escuela. Selecciona el periodo y formato Excel, PDF o CSV. Los reportes aceptan periodos de hasta 366 días y la descarga queda auditada.
-
-### Seguimiento del desarrollo
-
-En **Seguimiento**, elige al alumno y registra una observación en el área correspondiente. Marca si puede verla la familia. Escribe hechos y avances observables; no agregues diagnósticos médicos o psicológicos. Las observaciones visibles generan un aviso interno a la familia.
-
-### Comunicación con las familias
-
-- Usa **Comunicados** para avisos generales o de grupo. Dirección puede publicar comunicados generales; las docentes publican en grupos que tienen asignados. Los avisos importantes pueden mostrar confirmación de lectura.
-- Usa **Comunicación** para conversar en privado con familias vinculadas a tus grupos. El historial y los adjuntos autorizados quedan guardados. No compartas información de un alumno en el chat de otra familia.
-- Dirección puede activar en **Comunicación** el horario permitido para enviar mensajes y seleccionar días y horas. El ajuste se aplica en hora de Ciudad de México; por defecto permanece desactivado hasta que la escuela defina su horario.
-- El portal muestra notificaciones internas; por ahora no envía correo ni notificaciones push. Chat y avisos se actualizan periódicamente mientras el portal está abierto.
-
-## Familias y acceso
-
-En **Solicitudes de privacidad**, Dirección recibe solicitudes familiares de acceso, corrección o eliminación. Marca **En revisión** y luego responde o cierra con una nota visible para la familia. Los estados avanzan en ese orden y una solicitud respondida solo puede cerrarse. Cada cambio genera auditoría y un aviso interno. La plataforma registra y comunica el seguimiento; Dirección debe resolver la petición conforme al aviso y proceso aprobado por la escuela. Evita añadir documentos personales en la nota.
-
-Una cuenta de tutor solo muestra alumnos vinculados por dirección. Antes de una entrega, comprueba que el alumno y el grupo sean los correctos. Si un niño no aparece, solicita a dirección que verifique la cuenta, el vínculo familiar y la inscripción activa.
-
-La página de acceso ya está disponible en la URL del portal. Dirección debe invitar las cuentas autorizadas de docentes y familias antes de que puedan entrar. Antes de registrar información real de menores, completa la validación de seguridad y privacidad, prueba la recepción de invitaciones y recuperación de cuentas por correo, y verifica respaldos restaurables. Las cuentas, roles y registros escolares todavía no se han migrado de D1 a Supabase Postgres.
+Las bajas conservan el historial. Reactivar un alumno requiere grupo activo. Planifica respaldo cifrado de datos y archivos, recuperación de identidades Auth y un ensayo de restauración en un destino separado. Define quién realiza ese trabajo y dónde conserva la frase de recuperación; nunca en esta guía ni en el repositorio.
 
 ## Si algo falla
 
-- Si no aparece un grupo, pide a dirección revisar la asignación docente o la inscripción activa.
-- Si no puedes entrar, usa **Recuperar contraseña** y revisa la bandeja de entrada. Si el portal indica que el correo alcanzó un límite temporal, espera antes de volver a solicitar el enlace. Abre el enlace nuevo pronto y cambia la contraseña directamente en el portal; no la compartas por mensajes.
-- Si una carga falla, conserva el archivo original y vuelve a intentarlo cuando la conexión sea estable. No envíes datos del alumno por un servicio externo como alternativa.
-- Si una actividad aparece vencida, revisa la fecha límite y la entrega registrada antes de cambiar el estado.
+- Sin hijo/grupo visible: dirección revisa vínculo, matrícula y asignación docente.
+- Acceso rechazado: usa recuperación; si sigue fallando, dirección revisa perfil y rol. No envíes contraseñas por chat.
+- Guardado o carga inciertos: vuelve a consultar lista/estado antes de repetir; conserva el mensaje de error y contacta a dirección.
+- Archivo bloqueado: verifica tipo y límite; si el servicio está indisponible, no uses documentos del alumno en un servicio externo como alternativa.
 
-Para preparar las políticas de privacidad y revisar los controles para menores, consulta `privacidad-y-proteccion-de-menores.md` junto con el plan de auditoría. Para las pruebas técnicas, el respaldo y la preparación de operación consulta `pruebas-y-operacion.md`. La plataforma no debe usarse con expedientes reales hasta cerrar los pendientes del plan de auditoría.
+## Evidencia y pendientes
+
+El portal usa Vercel/Next.js y Supabase Auth/PostgreSQL/Storage; la rama D1/R2 se conserva para el destino anterior. El recorrido escolar local real pasó **149 solicitudes/45 comprobaciones**, incluyendo archivos privados, análisis real, revisión de tareas, asistencia, seguimiento, comunicados y aislamiento de dos familias. Un ensayo separado de restauración local pasó seis comprobaciones de cuentas, datos, archivos privados y acceso de dos familias. Estos resultados no acreditan correo, invitaciones, Google Meet ni operación/recuperación de producción. Las pruebas y pendientes vigentes están en [Estado de requisitos](estado-requisitos.md).
+
+En el destino restaurado, **dos familias y una docente sintéticas** completaron otro ensayo de chat HTTP:26 comprobaciones funcionales PASS de mensajes, lecturas, avisos, persistencia e aislamiento. El primer informe conserva FAIL por un guard de limpieza que no admitía el avance de la fecha del perfil al iniciar sesión; la limpieza dirigida posterior pasó y conservó el destino original. No se repitieron envíos. Este resultado no acredita transporte Realtime ni chat de producción.

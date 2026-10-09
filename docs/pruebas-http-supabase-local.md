@@ -5,7 +5,7 @@
 ## Servicios necesarios
 
 - Supabase local real: PostgreSQL, Auth y PostgREST, con las migraciones escolares actuales instaladas. Puede ser un runtime nativo oficial de Supabase o una instalación local aislada; Docker no es necesario si se dispone del runtime nativo.
-- Una instancia de la app en otro puerto loopback. Debe usar `SCHOOL_AUTH_PROVIDER=supabase` y `SCHOOL_DATA_PROVIDER=supabase`, URL/claves del stack local y `APP_ORIGIN` igual al origen de esa app. Arrancarla con `NODE_ENV=development` (por ejemplo `next dev`), `SCHOOL_LOCAL_SUPABASE_HTTP=isolated-test`, `VERCEL` ausente y un entorno dedicado; este runner no arranca Next.js ni carga sus archivos de entorno. La excepciónHTTP está rechazada en `NODE_ENV=production`, por lo que `next start` necesita un transporteHTTPS local con certificado confiable, fuera del alcance de este runner.
+- Una instancia de la app en otro puerto loopback. Debe usar `SCHOOL_AUTH_PROVIDER=supabase` y `SCHOOL_DATA_PROVIDER=supabase`, URL/claves del stack local y `APP_ORIGIN` igual al origen de esa app. Arrancarla con `NODE_ENV=development` (por ejemplo `next dev`), `SCHOOL_LOCAL_SUPABASE_HTTP=isolated-test`, `VERCEL` ausente y un entorno dedicado; este runner no arranca Next.js ni carga sus archivos de entorno. En este entorno exclusivamente, `next.config.ts` activa `skipMiddlewareUrlNormalize` para evitar que Next.js convierta la URL literal a `localhost` y conserve una comprobaciónCSRF estricta entre URL y Origin. La excepciónHTTP está rechazada en `NODE_ENV=production`, por lo que `next start` necesita un transporteHTTPS local con certificado confiable, fuera del alcance de este runner.
 - Claves **solo locales** en un archivo JSON regular con nombre `school-http-local-credentials.json`, permisos `0600`, contenido `{ "anonKey": "…", "serviceRoleKey": "…" }`. No escribirlas en comandos compartidos, evidencia o documentación.
 
 La URL de app y Supabase debe ser `http://127.0.0.1:puerto` o `http://[::1]:puerto`, con puertos explícitos diferentes. Rechaza DNS, `localhost`, IP abreviada, TLS, rutas, credenciales en URL y redirecciones. Esta restricción evita resolver un nombre que apunte a otro servidor.
@@ -36,7 +36,13 @@ Los puertos son ejemplos; usar los puertos del runtime local. El archivo de evid
 7. Comprueba aislamiento de alumnos, tareas, entregas, asistencia, seguimiento, comunicados y avisos entre A y B; bloquea escrituras de tutor fuera de su rol. Comprueba registros de entrega y auditoría directamente en PostgreSQL mediante PostgREST local.
 8. Cierra las sesiones y verifica que las cookies se retiraron y las APIs vuelven a exigir autenticación.
 
-Las entregas usan nota textual. Este recorrido no certifica carga de archivos, análisis de archivos, correos/invitaciones, videollamadas, grabaciones, push, transporte Realtime ni la configuración de producción.
+Sin `LOCAL_SCHOOL_HTTP_FILES=required`, las entregas usan nota textual y la evidencia indica archivos no solicitados. Con esa opción (o `runSchoolHttpLocal(..., { includeFiles: true })`), la app debe estar configurada con Storage privado y un analizador real activo: no hay simulación ni fallback que permita pasar la prueba sin ellos.
+
+La extensión crea PDF sintéticos válidos en memoria, sube material de biblioteca, busca con grupo/categoría/paginación, compara bytes de previsualización/descarga conSHA256, adjunta una guía a la tarea, reemplaza el material conservando su identidad y sube evidencia del alumno antes de la revisión docente. Comprueba `private, no-store`, tipoPDF, `nosniff`, restricciones de rol y404/401 para otra familia y anónimos. FormData usa boundary automático y límite4MiB+64KiB; no devuelve enlaces públicos ni guarda contenido de archivos en la evidencia.
+
+El runner no inicia ni sustituye el analizador. El supervisor local puede usar el hook del analizador real para mantener URL/token solo en memoria mientras arranca Next con un entorno aislado, ejecuta este recorrido y detiene ambos servicios. No habilitar `SCHOOL_FILE_SCAN_LOCAL_MOCK` en esa aceptación.
+
+Este recorrido no certifica correos/invitaciones, videollamadas, grabaciones, push, transporte Realtime ni la configuración de producción.
 
 ## Evidencia y fallos
 
@@ -48,7 +54,19 @@ Pruebas del propio runner:
 
 ```sh
 node --test tests/supabase-school-http-local.test.mjs
+node --test tests/supabase-school-http-local-files.test.mjs
 node --experimental-strip-types --test tests/supabase-local-http-policy.test.mjs
 ```
 
 Estas pruebas verifican guardas, transporte loopback, cookies, límites, evidencia y fallo sin reintento. No sustituyen una ejecución del recorrido contra Auth/PostgREST/PostgreSQL reales. Registrar por separado el resultado real y la ubicación del JSON al completar el stack.
+
+
+## Hallazgos conservados durante la aceptación nativa
+
+El primer intento quedó registrado comoFAIL por la normalización de loopback de Next.js (403 de origen, antes de datos escolares). El siguiente quedó comoFAIL tras14comprobaciones correctas, cuando una entrega por un alumno de otra familia recibió503 en vez de404. Ambos JSON se conservan; no hubo replay automático.
+
+PostgREST traduce los errores de claseP0 aHTTP500; las RPC escolares usan explícitamenteP0002 para recursos no disponibles. Se verificó el código mediante una llamadaGET local sinDML y se corrigió el adaptador para interpretar soloJSON acotado con `code=P0002` enRPC500 como404. Los demás códigos/estados permanecen intactos y no se exponen message/details/hint. [Documentación oficial de errores de PostgREST](https://docs.postgrest.org/en/stable/references/errors.html).
+
+Antes de retirar cada fixture se guardó evidencia. El segundo se respaldó cifrado (datos públicos y Auth) antes de la limpieza dirigida porUUID/relación exacta, sin reset global. No considerar la aceptación completa hasta que el nuevo JSON indiquePASS de todo el recorrido solicitado.
+
+El intento con analizador real y Storage confirmó la subida privada del primer material, pero se detuvo después de 16 comprobaciones: el harness esperaba una lista vacía al solicitar explícitamente un grupo ajeno. La RPC devuelve correctamente 404 en ese caso. Se corrigió únicamente el harness: exige 404 para ese filtro y después consulta sin grupo para comprobar que la biblioteca autorizada de la familia B está vacía. La prueba ejecutada del helper cubre ambas respuestas, reemplazos y archivos de tareas/entregas; también exige detenerse si cambia ese contrato o una subida queda incierta. El JSON fallido se conserva y el fixture se respalda antes de su limpieza dirigida.

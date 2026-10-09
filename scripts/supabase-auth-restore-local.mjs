@@ -1,0 +1,69 @@
+/** Future isolated restore acceptance. No execution until a separate empty local target is authorized. */
+import fs from "node:fs";
+import path from "node:path";
+import {spawn} from "node:child_process";
+import postgres from "postgres";
+import {deriveBackupKey,decryptBackupFile,sha256} from "./backup-crypto.mjs";
+import {createSupabaseClient,loadSchoolBackupTables,restoreBackup,verifyBackup,stableStringify} from "./supabase-school-backup.mjs";
+import {privateLocalFile,assertSyntheticAuthRows} from "./supabase-auth-backup-local.mjs";
+import {assertLoopbackUrl,readLocalCredentials,assertLocalTransportUrl,LocalRealtimeTestError} from "../tests/realtime-local/guards.mjs";
+const fail=code=>{throw new LocalRealtimeTestError(code);};
+const UUID=/^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i;
+export function restoreConfiguration(config){
+ if(config.allowRestore!=="RESTORE_SYNTHETIC_AUTH_TO_EMPTY_LOCAL_TARGET")fail("local_restore_not_acknowledged");
+ const source=assertLoopbackUrl(config.sourceDatabaseUrl,["postgres:","postgresql:"]);const target=assertLoopbackUrl(config.targetDatabaseUrl,["postgres:","postgresql:"]);const api=assertLoopbackUrl(config.targetApiUrl);const app=assertLoopbackUrl(config.targetAppUrl);if(app.origin===api.origin)fail("school_app_and_api_must_differ");
+ if(source.host===target.host)fail("source_target_must_differ");
+ for(const file of [config.pgBin,config.authDirectory,config.publicDirectory,config.passphraseFile,config.probesFile,config.scratch,config.targetCredentialsFile])if(!path.isAbsolute(file)||!file.startsWith("/tmp/school-isolated-runtime-"))fail("isolated_paths_required");
+ if(path.basename(config.probesFile)!=="school-auth-restore-probes.local.json")fail("dedicated_restore_probes_required");
+ return{source,target,api,app};
+}
+export function validateRestoreProbes(probes,users){
+ if(!probes||!Array.isArray(probes.users)||probes.users.length<2||probes.users.length>10||!probes.object)fail("restore_login_and_storage_probes_required");
+ const known=new Map(users.map(user=>[user.id,user.email]));const seen=new Set();
+ for(const user of probes.users){if(!UUID.test(user.id??"")||seen.has(user.id)||known.get(user.id)!==user.email||typeof user.password!=="string"||user.password.length<12||user.password.length>256||!["tutor","docente"].includes(user.role))fail("invalid_synthetic_login_probe");seen.add(user.id);if(user.role==="tutor"&&(!UUID.test(user.ownStudentId??"")||!UUID.test(user.foreignStudentId??"")||user.ownStudentId===user.foreignStudentId))fail("invalid_family_rls_probe");}
+ const families=probes.users.filter(user=>user.role==="tutor");if(families.length<2)fail("two_family_probes_required");for(const family of families)if(!families.some(other=>other.id!==family.id&&other.ownStudentId===family.foreignStudentId))fail("foreign_student_positive_control_required");
+ const object=probes.object;if(!UUID.test(object.fileId??"")||!seen.has(object.ownerUserId)||!seen.has(object.foreignUserId)||object.ownerUserId===object.foreignUserId||typeof object.key!=="string"||!object.key||!/^private\/(material|submission|message)\/[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(object.key)||!/^([a-f0-9]{64})$/.test(object.sha256??""))fail("invalid_storage_restore_probe");return probes;
+}
+export function assertRestoredFileMetadata(rows,object){if(!Array.isArray(rows)||rows.length!==1||rows[0]?.id!==object.fileId||rows[0]?.object_key!=="supabase:"+object.key)fail("restored_file_object_relation_failed");}
+export async function readLocalAuthArchive(directory,passphrase){
+ const meta=JSON.parse(privateLocalFile(path.join(directory,"auth-meta.json")));if(meta.format!=="school-auth-cli-local-complement"||meta.version!==1||typeof meta.salt!=="string"||Buffer.from(meta.salt,"base64").length!==16)fail("invalid_auth_archive");
+ const key=await deriveBackupKey(passphrase,Buffer.from(meta.salt,"base64"));try{
+ const manifest=JSON.parse(decryptBackupFile(privateLocalFile(path.join(directory,"auth-manifest.json.enc")),key,"auth-manifest.json.enc"));assertSyntheticAuthRows(manifest.users??[]);
+ if(manifest.dump!=="auth-data.sql.enc"||manifest.method!=="supabase-cli-local-native-data-only-auth"||!manifest.managedSchemaInstalledSeparately)fail("invalid_auth_archive_scope");
+ const data=decryptBackupFile(privateLocalFile(path.join(directory,manifest.dump)),key,manifest.dump);if(data.length!==manifest.dataSize||sha256(data)!==manifest.dataSha256)fail("auth_archive_integrity_failed");return{manifest,data};
+ }finally{key.fill(0);}
+}
+async function restorePsql(config,parsed,file){
+ const out=fs.openSync(path.join(config.scratch,"restore.stdout.private"),"wx",0o600),err=fs.openSync(path.join(config.scratch,"restore.stderr.private"),"wx",0o600);
+ try{const exit=await new Promise(resolve=>{const child=spawn(path.join(config.pgBin,"psql"),["-X","--single-transaction","--variable","ON_ERROR_STOP=1","--command","SET session_replication_role = replica","--file",file,"--command","SET session_replication_role = origin"],{env:{PATH:config.pgBin+path.delimiter+process.env.PATH,PGHOST:parsed.hostname.replace(/^\[|\]$/g,""),PGPORT:parsed.port,PGDATABASE:"postgres",PGUSER:"postgres",PGPASSWORD:decodeURIComponent(parsed.password),PGCONNECT_TIMEOUT:"5",PGSSLMODE:"disable"},stdio:["ignore",out,err]});const timeout=setTimeout(()=>child.kill("SIGTERM"),120000);child.on("error",()=>{clearTimeout(timeout);resolve(-1);});child.on("close",code=>{clearTimeout(timeout);resolve(code);});});if(exit!==0)fail("local_auth_psql_restore_failed");}finally{fs.closeSync(out);fs.closeSync(err);}
+}
+export async function runLocalFullAuthRestore(config){
+ const{target,api,app}=restoreConfiguration(config);const passphrase=privateLocalFile(config.passphraseFile).toString("utf8");const archive=await readLocalAuthArchive(config.authDirectory,passphrase);
+ const probes=validateRestoreProbes(JSON.parse(privateLocalFile(config.probesFile)),archive.manifest.users);const credentials=readLocalCredentials(config.targetCredentialsFile);const origins=new Set([api.origin,app.origin]);
+ const guardedFetch=(input,options={})=>{assertLocalTransportUrl(input instanceof Request?input.url:input,origins,"http:");return fetch(input,{...options,redirect:"error"});};
+ const client=createSupabaseClient({url:api.origin,secret:credentials.serviceRoleKey,fetchImpl:guardedFetch});const tables=await loadSchoolBackupTables();const publicBackup=await verifyBackup({directory:config.publicDirectory,passphrase,tables});if(publicBackup.objects<1)fail("real_storage_object_required");
+ const sql=postgres({host:target.hostname.replace(/^\[|\]$/g,""),port:Number(target.port),database:"postgres",username:"postgres",password:decodeURIComponent(target.password),ssl:false,max:1,connect_timeout:5,onnotice:()=>{}});const checks=[];fs.mkdirSync(config.scratch,{mode:0o700});
+ try{
+ const columns=await sql`select table_name,column_name,data_type,udt_name,is_nullable,column_default from information_schema.columns where table_schema='auth' order by table_name,ordinal_position`;if(sha256(stableStringify(columns))!==archive.manifest.authSchemaDigest)fail("managed_auth_schema_version_mismatch");
+ const authTables=await sql`select tablename from pg_tables where schemaname='auth' and tablename<>'schema_migrations' order by tablename`;for(const{tablename}of authTables){if(!/^[a-z_]+$/.test(tablename))fail("invalid_auth_table_identifier");const rows=await sql.unsafe(`select 1 from auth."${tablename}" limit 1`);if(rows.length)fail("target_auth_not_empty");}
+ for(const table of tables){const rows=await sql.unsafe(`select 1 from public."${table.name}" limit 1`);if(rows.length)fail("target_school_not_empty");}
+ const listed=await client.request("/auth/v1/admin/users?page=1&per_page=1");if((await listed.json()).users?.length!==0)fail("target_api_auth_not_empty");checks.push("empty_native_target_and_exact_managed_auth_schema");
+ const plain=path.join(config.scratch,"auth-data.sql.private");fs.writeFileSync(plain,archive.data,{mode:0o600,flag:"wx"});await restorePsql(config,target,plain);fs.rmSync(plain);archive.data.fill(0);
+ const users=await sql`select id,email,encrypted_password from auth.users order by id`;const identities=await sql`select * from auth.identities order by id`;if(sha256(stableStringify(users))!==archive.manifest.userUuidPasswordDigest||sha256(stableStringify(identities))!==archive.manifest.identitiesDigest)fail("restored_auth_uuid_hash_identity_mismatch");checks.push("original_uuid_password_hash_and_identities_preserved");
+ await restoreBackup({directory:config.publicDirectory,client,tables,passphrase,confirmRestore:true});checks.push("public_33_and_storage_restored_and_verified");
+ const sessions=new Map();const cookieJars=new Map();
+ async function appRequest(endpoint,{jar,method="GET",body}={}){const response=await guardedFetch(app.origin+endpoint,{method,headers:{Origin:app.origin,...(body===undefined?{}:{"Content-Type":"application/json"}),...(jar?.size?{Cookie:[...jar].map(([key,value])=>key+"="+value).join("; ")}: {})},...(body===undefined?{}:{body:JSON.stringify(body)}),signal:AbortSignal.timeout(15000)});if(jar)for(const cookie of response.headers.getSetCookie()){const entry=cookie.split(";",1)[0],cut=entry.indexOf("=");if(cut<1)fail("invalid_local_school_cookie");const key=entry.slice(0,cut),value=entry.slice(cut+1);if(!/^[A-Za-z0-9_-]+$/.test(key))fail("invalid_local_school_cookie");if(!value||/;\s*max-age=0(?:;|$)/i.test(cookie))jar.delete(key);else jar.set(key,value);}return response;}
+ async function userRequest(endpoint,jwt){const response=await guardedFetch(api.origin+endpoint,{headers:{apikey:credentials.anonKey,Authorization:"Bearer "+jwt},signal:AbortSignal.timeout(10000)});return response;}
+ for(const probe of probes.users){const response=await guardedFetch(api.origin+"/auth/v1/token?grant_type=password",{method:"POST",headers:{apikey:credentials.anonKey,"Content-Type":"application/json"},body:JSON.stringify({email:probe.email,password:probe.password}),signal:AbortSignal.timeout(10000)});if(!response.ok)fail("restored_password_login_failed");const session=await response.json();if(session.user?.id!==probe.id||session.user?.email!==probe.email||typeof session.access_token!=="string")fail("restored_auth_identity_mismatch");let claims;try{claims=JSON.parse(Buffer.from(session.access_token.split(".")[1],"base64url"));}catch{fail("restored_jwt_shape_invalid");}if(claims.sub!==probe.id||claims.role!=="authenticated"||claims.iss!==api.origin+"/auth/v1"||!Number.isFinite(claims.exp)||claims.exp*1000<=Date.now())fail("restored_jwt_identity_invalid");const verification=await userRequest("/auth/v1/user",session.access_token);if(!verification.ok||(await verification.json()).id!==probe.id)fail("restored_auth_user_api_failed");sessions.set(probe.id,session.access_token);
+ const jar=new Map();const schoolLogin=await appRequest("/api/auth/sign-in/email",{jar,method:"POST",body:{email:probe.email,password:probe.password}});if(!schoolLogin.ok||jar.size===0)fail("restored_school_cookie_login_failed");const schoolSession=await appRequest("/api/auth/get-session",{jar});if(!schoolSession.ok||(await schoolSession.json()).user?.id!==probe.id)fail("restored_school_session_identity_failed");cookieJars.set(probe.id,jar);
+ if(probe.role==="tutor"){for(const[id,expected]of [[probe.ownStudentId,1],[probe.foreignStudentId,0]]){const response=await userRequest(`/rest/v1/students?id=eq.${id}&select=id`,session.access_token);if(!response.ok)fail("restored_family_rls_request_failed");const rows=await response.json();if(rows.length!==expected||(expected===1&&rows[0].id!==id))fail("restored_family_rls_failed");}}}
+ checks.push("real_restored_password_login_and_two_family_rls");
+ const object=probes.object;const encoded=object.key.split("/").map(encodeURIComponent).join("/");const owner=sessions.get(object.ownerUserId),foreign=sessions.get(object.foreignUserId);
+ const metadata=await userRequest(`/rest/v1/files?id=eq.${object.fileId}&select=id,object_key`,owner);if(!metadata.ok)fail("restored_file_metadata_failed");const rows=await metadata.json();assertRestoredFileMetadata(rows,object);
+ const [bucket]=await sql`select public from storage.buckets where id='school-files'`;if(!bucket||bucket.public!==false)fail("restored_bucket_not_private");
+ for(const token of [owner,foreign,credentials.anonKey]){const denied=await userRequest("/storage/v1/object/authenticated/school-files/"+encoded,token);if(![400,401,403,404].includes(denied.status))fail("direct_storage_jwt_access_allowed");}
+ const bytes=await appRequest(`/api/files/${object.fileId}`,{jar:cookieJars.get(object.ownerUserId)});if(!bytes.ok||sha256(Buffer.from(await bytes.arrayBuffer()))!==object.sha256)fail("restored_school_file_bytes_failed");
+ const foreignMetadata=await userRequest(`/rest/v1/files?id=eq.${object.fileId}&select=id`,foreign);if(!foreignMetadata.ok||(await foreignMetadata.json()).length!==0)fail("restored_foreign_file_metadata_allowed");const denied=await appRequest(`/api/files/${object.fileId}`,{jar:cookieJars.get(object.foreignUserId)});if(denied.status!==404)fail("restored_foreign_school_file_allowed");const anonymous=await appRequest(`/api/files/${object.fileId}`);if(anonymous.status!==401)fail("anonymous_school_file_allowed");checks.push("real_school_file_bytes_owner_foreign_and_anonymous_access");checks.push("private_bucket_and_direct_storage_jwt_denial_for_all");
+ return{status:"PASS",scope:"synthetic-local-full-auth-public33-storage-restore",checks,users:archive.manifest.userCount,objects:publicBackup.objects};
+ }catch(error){const failure=new LocalRealtimeTestError(error?.code??"local_full_restore_failed");failure.completedChecks=[...checks];failure.targetMayContainRestoredSyntheticData=true;throw failure;}finally{archive.data.fill(0);await sql.end({timeout:5});fs.rmSync(config.scratch,{recursive:true,force:true});}
+}

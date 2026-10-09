@@ -49,6 +49,8 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
     if (rows.length && !rows[0].deletedAt) file = rows[0];
   }
   if (!file) return errorResponse(404, "Archivo no disponible.");
+  // Recordings remain disabled, including existing or imported private files.
+  if (file.purpose === "recording") return errorResponse(404, "Archivo no disponible.");
   if (!isFileStorageConfigured(env, file.objectKey)) return errorResponse(503, "El almacenamiento privado no está configurado.");
   if (file.purpose === "message") {
     if (fileFromSupabase) {

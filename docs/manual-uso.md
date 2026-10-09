@@ -1,53 +1,68 @@
 # Guía rápida del portal escolar
 
-Esta guía corresponde a las funciones implementadas en la versión actual. Dirección entrega las cuentas; no hay registro público. Cada persona entra con correo y contraseña desde **Iniciar sesión**.
+**Actualizada: 9 de octubre de 2026.** Portal: [El Mundo de los Niños](https://el-mundo-de-los-ninos-portal.vercel.app).
 
-**Aviso de operación:** Supabase Auth está activo para el inicio de sesión y los archivos nuevos se guardan en Supabase Storage. Las cuentas escolares, roles y registros académicos siguen en D1, y los archivos previos permanecen en R2; la migración de datos todavía no está completa. El acceso de Dirección y las invitaciones deben probarse en el sitio publicado antes de incorporar expedientes reales.
+Dirección entrega las cuentas autorizadas. No hay registro público. Cada persona entra desde **Iniciar sesión** con su propio correo y contraseña; después verá las secciones de su tipo de acceso. El portal usa Vercel como hosting y Supabase para cuentas, registros escolares y archivos privados.
 
-## Dirección
+El hosting se conserva en el equipo Vercel **pandito**, por decisión del usuario. El código tiene un repositorio GitHub privado escolar creado y verificado; trasladar el hosting a otra cuenta no es un paso pendiente.
 
-1. En **Grupos**, crea primero el ciclo escolar y después los grupos de lactantes, maternal, prekínder o preescolar.
-2. En **Cuentas**, escribe el correo de cada docente y tutor y envía la invitación. La persona abre el correo y crea su contraseña privada desde el enlace de la escuela.
-3. Cada persona entra con su correo y contraseña. En **Mi cuenta** puede cambiarla; el cambio pide la contraseña actual y cierra las demás sesiones.
-4. En **Alumnos**, inscribe al niño en su grupo. Usa **Editar datos básicos** para corregir nombre, apellidos o fecha de nacimiento; los cambios quedan registrados en auditoría. Para dar de baja a un alumno, usa **Dar de baja**; se conserva su expediente, pero la familia y las maestras pierden el acceso operativo. Para reactivarlo, selecciona el grupo actual y el sistema crea una nueva inscripción sin borrar el historial.
-5. Publica fechas generales en **Calendario** y comunicados escolares en **Comunicados**.
-6. Revisa los registros reales del panel principal. Los grupos, alumnos y asistencias comienzan vacíos.
-7. En **Cuentas**, dirección puede corregir el nombre o correo de una persona, o suspender/reactivar su acceso. Suspender cierra sus sesiones y conserva sus registros escolares. No se puede administrar la cuenta propia ni la de superadministración.
+## Dirección: preparar la escuela
 
-## Superadministración
+1. En **Grupos**, crea primero el ciclo escolar con fechas y después cada grupo con su etapa: lactantes, maternal, prekínder o preescolar.
+2. En **Cuentas**, invita a cada docente y tutor con su correo correcto. Cada persona crea su contraseña desde el enlace privado. Antes de invitar a todas las familias, confirma con una cuenta autorizada que el correo llegue y el enlace abra el portal.
+3. En **Grupos**, asigna las docentes a sus grupos.
+4. En **Alumnos**, registra al niño, selecciona su grupo y abre el expediente para vincular a sus tutores. Tener una cuenta de tutor no vincula automáticamente a ningún niño.
+5. Publica fechas en **Calendario**, avisos en **Comunicados** y define el horario de mensajes en **Comunicación**, si la escuela lo necesita. Las horas se muestran en horario de Ciudad de México.
+6. Revisa el panel de **Inicio**: los indicadores provienen de registros actuales; una escuela sin matrícula aparece vacía o en cero.
 
-- **Estado del sistema** muestra si hay configuración de recuperación de cuentas, el modo actual de Meet, el estado de grabaciones y los pendientes de respaldos y privacidad. Superadministración también puede publicar una nueva versión del aviso escolar después de que la escuela la apruebe. La publicación es pública, conserva la versión anterior y deja una entrada de auditoría; no se puede editar ni retirar desde el formulario. Una configuración presente no equivale a un envío de correo o a una restauración probados.
-- **Aviso de privacidad** en el inicio de sesión abre la página pública. Antes de publicar, muestra el estado pendiente. No ingresar datos escolares reales hasta que la escuela complete los campos con el texto aprobado.
-- **Auditoría** permite consultar las 100 acciones más recientes, sin contenido de mensajes ni nombres de alumnos.
+En **Alumnos**, puedes corregir datos básicos. **Dar de baja** conserva el expediente y cierra el acceso operativo a ese alumno. Al reactivarlo debes elegir un grupo activo; se crea una nueva inscripción y se conserva el historial.
 
-## Docentes
+En **Cuentas**, puedes editar el nombre, tipo de acceso o estado de docentes y tutores. Solo superadministración administra cuentas de dirección. Cambiar permisos o desactivar el acceso se aplica a las siguientes solicitudes escolares y conserva los registros; no supone revocar todos los tokens de acceso. Para cambiar un correo, solicita la actualización coordinada a administración técnica. No se puede administrar desde esa pantalla la propia cuenta ni una cuenta superadministradora.
 
-- Dirección debe crear la cuenta y asignar al menos un grupo.
-- **Clases virtuales**: crear la reunión en Google Meet y publicar aquí su enlace, grupo, hora y maestra. El portal no crea la reunión por sí solo. Las grabaciones están desactivadas.
-- **Tareas y entregas**: publica instrucciones y fecha, y adjunta uno o varios PDF, imágenes o audios (hasta 10 MB por archivo). También puedes agregar materiales a una tarea publicada. Después abre las entregas para leer evidencias, registrar una observación y marcar su estado. En prekínder y preescolar puedes agregar una evaluación formativa (“Logrado”, “En proceso” o “Con acompañamiento”), sin calificación numérica. Para lactantes y maternal se usan solo observaciones cualitativas.
-- **Biblioteca**: comparte por grupo PDF, imágenes y audios MP3, OGG o WAV. El sistema rechaza tipos no permitidos y archivos grandes.
-- **Asistencia**: selecciona grupo y fecha, marca un estado por alumno y guarda. Para descargar el historial, elige un periodo de hasta 366 días y selecciona Excel (.xlsx), PDF o CSV.
-- **Seguimiento**: registra observaciones por área y decide si cada una puede verla la familia.
-- **Comunicación**: inicia un chat únicamente con las familias vinculadas a tus grupos.
-- En **Comunicación**, adjunta un PDF o una imagen JPG, PNG o WebP de hasta 10 MB. Solo los participantes autorizados de la conversación pueden descargar el archivo.
-- **Auditoría**: dirección y superadministración pueden consultar las 100 acciones más recientes, sin contenido de mensajes ni nombres de alumnos.
+## Docentes: trabajo cotidiano
 
-## Familias
+| Sección | Qué hacer |
+| --- | --- |
+| **Clases virtuales** | Crea la reunión en Google Meet y publica enlace, grupo y horario. El portal muestra el enlace al grupo autorizado; la organizadora controla la admisión dentro de Meet. Las grabaciones están apagadas. |
+| **Tareas y entregas** | Publica título, instrucciones, grupo y fecha. Adjunta guías cuando la recepción de archivos esté habilitada. En **Revisar entregas**, lee la evidencia, añade retroalimentación y guarda el estado. |
+| **Biblioteca** | Comparte guías, imágenes, canciones o audios por grupo. Busca por título o nombre del archivo y filtra por grupo/categoría. Abre la vista previa de PDF, imágenes o audio, o descarga el recurso. Puedes reemplazarlo o retirarlo; la acción queda registrada. |
+| **Juegos y retos** | Consulta actividades por etapa para acompañar el trabajo en casa. Las respuestas y logros corresponden al alumno seleccionado. La escuela debe revisar el contenido pedagógico antes de incorporarlo a su programa. |
+| **Asistencia** | Elige grupo y fecha, marca presente, retardo, ausente o falta justificada y guarda. Una falta justificada requiere motivo. Revisa solicitudes familiares y acepta o rechaza con una respuesta. |
+| **Seguimiento** | Registra hechos y avances observables por área; decide si cada observación es visible para la familia. Las internas permanecen reservadas al equipo autorizado. |
+| **Comunicados** | Publica avisos para tus grupos; los importantes permiten confirmar lectura. Dirección puede publicar avisos generales. |
+| **Comunicación** | Conversa en privado con tutores vinculados a tus grupos. Respeta el horario escolar de mensajes cuando esté activo. |
 
-- Dirección vincula a los niños con la cuenta. La familia ve solo los niños relacionados con su usuario.
-- En **Tareas y entregas**, selecciona al niño y adjunta PDF o imagen como evidencia.
-- Abre los PDF, imágenes y audios que la maestra adjunte a cada tarea desde el enlace **Descargar material**.
-- En **Comunicación**, las familias pueden adjuntar un PDF o una imagen JPG, PNG o WebP de hasta 10 MB en el chat con la maestra de su hijo.
-- Cuando el docente revise una entrega, la familia recibe un aviso dentro del portal y puede consultar la evaluación formativa u observación.
-- Descarga guías y escucha audios desde **Biblioteca**.
-- Consulta clases de Meet, calendario, asistencia, observaciones visibles y comunicados.
-- En **Privacidad**, envía a Dirección una solicitud de acceso, corrección o eliminación de información de un hijo vinculado; consulta el estado y la nota de respuesta. Evita adjuntar documentos o contraseñas. Dirección revisará la petición conforme al proceso de la escuela.
-- La bandeja **Avisos** muestra notificaciones del usuario actual por nuevos mensajes, comunicados, tareas, clases, eventos del calendario, observaciones visibles y actividades revisadas. Se actualiza periódicamente mientras el portal está abierto.
+Para prekínder y preescolar, las entregas admiten evaluación formativa: **Logrado**, **En proceso** o **Con acompañamiento**. En lactantes y maternal se usan observaciones cualitativas, sin calificación numérica ni diagnóstico automático.
 
-## Límites actuales
+En **Asistencia**, el historial muestra registros y porcentaje individual. La regla actual suma presentes y retardos entre todos los registros; una falta justificada cuenta como ausencia. Dirección debe revisar esa regla con su política escolar. Los reportes permiten Excel, PDF o CSV y periodos de hasta 366 días; docentes consultan sus grupos y dirección puede consultar todos.
 
-- No hay registro de alumno para iniciar sesión; el acceso infantil supervisado se implementará si la escuela lo necesita.
-- Los mensajes muestran acuses de lectura y pendientes por conversación. Admiten un PDF o imagen por mensaje (hasta 10 MB); se actualizan por consulta periódica, no por WebSocket o notificación push. Si falla la conexión, el chat muestra que está reintentando, aumenta la pausa entre intentos hasta un minuto y sincroniza al volver la conexión o al regresar a la pestaña.
-- Las videollamadas se crean fuera del portal; el enlace queda visible solo para las cuentas autorizadas del grupo.
-- Las invitaciones y la recuperación de contraseña dependen de la configuración de correo y de las URL permitidas en Supabase. Hay que probar la recepción antes de invitar a toda la comunidad.
-- No usar datos reales en pruebas. Activar grabaciones, recopilar fotos o abrir el acceso a familias requiere aprobación de dirección y controles de privacidad.
+## Familias: cinco pasos
+
+1. Entra con la cuenta que invitó dirección. Si no aparece tu hijo, pide que revisen el vínculo familiar y la inscripción activa.
+2. En **Tareas y entregas**, elige al niño, lee las instrucciones y envía una nota o evidencia. Después comprueba el estado **Entregada**. La revisión de la maestra aparece ahí y genera un aviso interno.
+3. En **Biblioteca**, busca y abre los recursos de su grupo. En cada tarea también puedes descargar los materiales adjuntos.
+4. Consulta **Calendario**, **Clases virtuales**, **Asistencia**, **Seguimiento** y **Comunicados**. Usa **Juegos y retos** junto al niño y marca sus respuestas cuando corresponda.
+5. Abre **Comunicación** para escribir a la docente. Abre **Avisos** para novedades y confirma la lectura de comunicados importantes.
+
+En **Privacidad**, puedes solicitar acceso, corrección o eliminación de información de un hijo vinculado y consultar la respuesta de dirección. El portal registra el seguimiento; la escuela resuelve la solicitud conforme a su proceso aprobado. Evita escribir contraseñas o adjuntar documentos personales en las notas.
+
+## Archivos y avisos
+
+- Las nuevas cargas admiten hasta **4 MB por archivo**. Biblioteca y materiales de tareas aceptan PDF, imágenes y audios permitidos; las evidencias y el chat aceptan PDF o imágenes. El chat admite un archivo por mensaje.
+- Los archivos son privados: se abren desde el portal con la sesión y permisos vigentes. Compartir su enlace no otorga acceso a otra persona.
+- Si la carga aparece desactivada, la escuela todavía debe habilitar la recepción segura de archivos. Puedes seguir enviando mensajes de texto. El ensayo local con analizador real no habilita automáticamente el servicio publicado.
+- **Avisos** y el chat indican si la conexión de cambios está activa o si usan actualización periódica. Al reconectar vuelven a consultar la información autorizada. No hay notificaciones push ni correo automático por cada actividad; los avisos se consultan con el portal abierto.
+
+## Cuenta y ayuda
+
+En **Mi cuenta**, cambia tu contraseña usando la actual; la nueva debe tener al menos 12 caracteres. Usa **Recuperar contraseña** desde el acceso si la olvidaste. Revisa bandeja y spam; si el proveedor informa un límite temporal, espera antes de solicitar otro enlace. No compartas contraseña ni enlace de recuperación.
+
+Si falla una operación, consulta primero la lista o el estado para comprobar si quedó guardada. Si el problema sigue, comunica a dirección la sección, hora y mensaje de error, sin enviar contraseñas ni información privada del alumno. Un error de conexión no es una confirmación de guardado.
+
+## Preparación para operar
+
+El portal publicado ya tiene acceso administrativo y secciones revisadas con la escuela vacía. El recorrido académico con cuentas y documentos sintéticos pasó **45 comprobaciones/149 solicitudes en un entorno local real**; no se ejecutó sobre expedientes escolares.
+
+El chat tuvo un ensayo HTTP separado con **dos familias y una docente sintéticas** en el destino local restaurado:26 comprobaciones funcionales correctas de mensajes, acuses, avisos e aislamiento. La limpieza posterior también quedó confirmada tras corregir un guard de fecha del perfil; el primer informe fallido se conserva. Esto comprueba el chat guardado, pero no la entrega de eventos Realtime ni una conversación escolar de producción.
+
+Antes de abrirlo a familias, dirección debe confirmar la recepción de invitaciones y recuperación, el servicio seguro de archivos publicado, respaldos restaurables, el aviso y autorizaciones aprobados y una revisión con docentes/familias en sus propios dispositivos. Google Meet se organiza manualmente y las grabaciones permanecen desactivadas. Consultar [el estado de requisitos](estado-requisitos.md) para evidencia y pendientes.

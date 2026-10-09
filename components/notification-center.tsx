@@ -13,6 +13,7 @@ export function NotificationCenter() {
   const [open, setOpen] = useState(false);
   const [realtimeStatus, setRealtimeStatus] = useState<Extract<SchoolRealtimeUpdate, { type: "status" }>["status"]>("disabled");
   const client = useRef<ReturnType<typeof createNotificationController> | null>(null);
+  const toggleButton = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     const controller = createNotificationController({
@@ -44,10 +45,11 @@ export function NotificationCenter() {
 
   const unread = state.items.filter(notice => !notice.readAt && !state.confirmedReadIds.includes(notice.id)).length;
   function toggle() { if (!open) client.current?.refresh(); setOpen(current => !current); }
+  function close() { setOpen(false); toggleButton.current?.focus(); }
   return <div className="notification-center">
-    <button type="button" className="notification-toggle" aria-expanded={open} aria-controls={panelId} onClick={toggle}>Avisos{unread > 0 && <span className="notification-count" aria-label={`${unread} avisos sin leer`}>{unread}</span>}{(state.error || state.markError) && <span className={styles.errorIndicator} aria-label="Hay un problema con tus avisos">!</span>}</button>
+    <button ref={toggleButton} type="button" className="notification-toggle" aria-expanded={open} aria-controls={panelId} onClick={toggle}>Avisos{unread > 0 && <span className="notification-count" aria-label={`${unread} avisos sin leer`}>{unread}</span>}{(state.error || state.markError) && <span className={styles.errorIndicator} aria-label="Hay un problema con tus avisos">!</span>}</button>
     {open && <section id={panelId} className="notification-popover" aria-label="Notificaciones escolares" aria-busy={state.loading || Boolean(state.markingId)}>
-      <div className="panel-heading"><strong>Notificaciones</strong><button type="button" className="secondary-button" onClick={() => setOpen(false)}>Cerrar</button></div>
+      <div className="panel-heading"><strong>Notificaciones</strong><button type="button" className="secondary-button" onClick={close}>Cerrar</button></div>
       {!state.online && <p className={styles.status} role="status">Sin conexión. Los avisos se actualizarán cuando vuelvas a conectarte.</p>}
       {state.online && state.loading && <p className={styles.status} role="status">{state.loaded ? "Actualizando avisos…" : "Cargando avisos…"}</p>}
       {state.error && <p className="form-error" role="alert">{state.error}</p>}

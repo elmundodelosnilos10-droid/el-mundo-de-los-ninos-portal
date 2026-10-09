@@ -1,3 +1,5 @@
+import { permitsIsolatedSupabaseHttp } from "./local-http-test-policy.ts";
+
 /**
  * Private Supabase Storage adapter for server-side Cloudflare Worker code.
  *
@@ -217,7 +219,7 @@ function safeBaseUrl(value: string | undefined, operation: PrivateStorageErrorOp
   if (!value) throw storageError("not_configured", operation);
   try {
     const url = new URL(value);
-    if (url.protocol !== "https:" || url.username || url.password || url.pathname !== "/" || url.search || url.hash) {
+    if ((url.protocol !== "https:" && !permitsIsolatedSupabaseHttp(value)) || url.username || url.password || url.pathname !== "/" || url.search || url.hash) {
       throw new Error("invalid URL");
     }
     return url;

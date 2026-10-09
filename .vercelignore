@@ -2,6 +2,8 @@
 .env*
 .wrangler
 .sites-runtime
+.vinext
+supabase/.temp
 .agents
 .codex
 .openai
@@ -14,4 +16,5 @@ work
 coverage
 deploy
 *.log
+*.tsbuildinfo
 *.tar.gz
