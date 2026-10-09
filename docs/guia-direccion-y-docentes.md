@@ -46,6 +46,9 @@ Las bajas conservan el historial. Reactivar un alumno requiere grupo activo. Pla
 - Sin hijo/grupo visible: dirección revisa vínculo, matrícula y asignación docente.
 - Acceso rechazado: usa recuperación; si sigue fallando, dirección revisa perfil y rol. No envíes contraseñas por chat.
 - Guardado o carga inciertos: vuelve a consultar lista/estado antes de repetir; conserva el mensaje de error y contacta a dirección.
+- En Alumnos y Cuentas, un guardado confirmado conserva su mensaje aunque falle la actualización de la lista. Usa **Actualizar listado** para repetir la consulta; no vuelvas a dar de alta a la misma persona.
+- Si la sesión o los permisos dejan de autorizar el directorio, sus registros se retiran de pantalla y los controles quedan bloqueados. Vuelve a entrar con la cuenta autorizada o contacta a dirección.
+- Puedes cerrar el panel **Avisos** con **Escape**; el foco vuelve al botón Avisos.
 - Archivo bloqueado: verifica tipo y límite; si el servicio está indisponible, no uses documentos del alumno en un servicio externo como alternativa.
 
 ## Evidencia y pendientes
