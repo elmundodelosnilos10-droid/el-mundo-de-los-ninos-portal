@@ -13,14 +13,15 @@ function harness({ uploadsReady = true, uploadStatus = 201 } = {}) {
   const state = { hooks: [], cursor: 0, calls: [] };
   const jsx = (type, props) => ({ type, props });
   const dependencies = {
-    react: { useEffect() {}, useState(initial) { const index = state.cursor++; state.hooks[index] ??= { value: index === 0 ? [task] : index === 1 ? false : initial }; return [state.hooks[index].value, next => { state.hooks[index].value = typeof next === "function" ? next(state.hooks[index].value) : next; }]; } },
+    react: { useEffect() {}, useCallback: callback => callback, useRef(initial) { const index = state.cursor++; state.hooks[index] ??= { current: initial }; return state.hooks[index]; }, useState(initial) { const index = state.cursor++; state.hooks[index] ??= { value: index === 0 ? [task] : index === 1 ? false : initial }; return [state.hooks[index].value, next => { state.hooks[index].value = typeof next === "function" ? next(state.hooks[index].value) : next; }]; } },
     "react/jsx-runtime": { jsx, jsxs: jsx }, "@/lib/datetime": { schoolDateTime: value => value, schoolLocalInputToISO: value => value }, "@/lib/school-upload-limits": uploadLimits,
   };
   class TaskFormData extends FormData { constructor(form) { super(); for (const [key, value] of Object.entries(form?.fields ?? {})) { if (Array.isArray(value)) for (const item of value) this.append(key, item); else this.set(key, value); } } }
   const sandboxModule = { exports: {} };
   const source = ts.transpileModule(fs.readFileSync(new URL("../app/tareas/task-manager.tsx", import.meta.url), "utf8"), { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX } }).outputText;
   vm.runInContext(source, vm.createContext({ module: sandboxModule, exports: sandboxModule.exports, require: name => dependencies[name] ?? assert.fail(`Unexpected ${name}`), File, FormData: TaskFormData,
-    fetch: async (url, options) => { state.calls.push({ url, options }); if (options?.method === "POST") return url === "/api/files" && uploadStatus === 413 ? new Response("FUNCTION_PAYLOAD_TOO_LARGE", { status: 413 }) : Response.json({ id: "synthetic-created" }, { status: 201 }); return Response.json({ items: [] }); },
+    AbortController, AbortSignal,
+    fetch: async (url, options) => { state.calls.push({ url, options }); if (options?.method === "POST") return url === "/api/files" && uploadStatus === 413 ? new Response("FUNCTION_PAYLOAD_TOO_LARGE", { status: 413 }) : Response.json({ id: "00000000-0000-4000-8000-000000000001" }, { status: 201 }); return Response.json({ items: [], total: 0, page: 1, pageSize: 25, hasMore: false }); },
   }), { filename: "task-manager.tsx" });
   const render = () => { state.cursor = 0; return sandboxModule.exports.TaskManager({ groups: [{ id: task.groupId, name: "Grupo" }], familyChildren: [{ id: "synthetic-child", name: "Alumno", familyName: "Sintético" }], canCreate: true, canReview: true, uploadsReady }); };
   return { state, render };
