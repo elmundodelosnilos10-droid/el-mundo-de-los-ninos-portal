@@ -83,3 +83,13 @@ Después de un resultado exitoso, comprobar login con Auth restaurado, UUID/role
 ## Relación con D1/R2 legacy
 
 `backup:school`, Wrangler, `restore-d1` y `restore-r2` operan sobre el destino anterior de Sites/Cloudflare. No respaldan ni restauran este portal Vercel/Supabase. Se conservan documentados como procedimientos legacy en [Pruebas y operación](pruebas-y-operacion.md), únicamente para recursos anteriores identificados y autorizados.
+
+## Ensayo real del catálogo opcional36 · 9 de octubre de 2026
+
+SQL31 añade preferencias, suscripciones y cola privada; al instalarlo debe elegirse explícitamente el catálogo36 y detener realmente cualquier dispatcher antes de respaldar/restaurar. No usar un catálogo33 parcial. Instrucciones: [avisos externos](notificaciones-externas.md#respaldo-y-restauración).
+
+En dos proyectos native nuevos separados, el ensayo registró **14 comprobaciones PASS** (`outputs/supabase-backup36-auth-local-20261009-attempt2.json`): respaldo cifrado/verificación offline y restauración de las 36 tablas/51 filas, complemento Auth real con tres usuarios/tres identidades, conservación de UUID/hashes/identidades y acceso Auth/RLS de dos familias. El snapshot contenía 6 trabajos pending, 1 claimed, 1 uncertain y 2 suppressed. Después de restaurar, el claimed vencido pasó a uncertain/lease_expired; los inciertos no volvieron a reclamarse ni pudieron reautorizarse. Solo se reclamaron los pendientes como ejercicio de base de datos; **no hubo dispatcher, envíos ni estados accepted inventados**.
+
+Se comprobó la igualdad de todas las filas antes del ejercicio posterior de la cola/login. Storage estaba vacío; este ensayo36 no acredita bytes de objetos. El ensayo33 anterior conserva su prueba independiente de tres objetos privados. Ambos proyectos nuevos se detuvieron oficialmente, conservando cifrados y datos. Los dos stacks anteriores siguieron detenidos y se comparó la huella de todos sus archivos de datos, sin diferencias. El FAIL inicial de la guarda de protocoloTCP se conserva en el informe intento1 y ocurrió antes de arrancar o escribir. El runner privado se reforzó después para atribuir/detener únicamente su propio arranque; no se reejecutó el PASS.
+
+No se aplicó SQL31 ni el permiso29 en producción. La cuenta del servidor escolar todavía necesita su permiso de lectura autorizado y un respaldo real, completo, cifrado y restaurado en otro destino. No confundir el ensayo sintético con la recuperación del proyecto escolar.
