@@ -118,3 +118,17 @@ Los cuatro indicadores exactos de configuración externa no están definidos en 
 Evidencia: `outputs/vercel-release-notices-20261009.json`, `outputs/github-publication-remote-notices-20261009.json`, `outputs/vercel-notices-{stage,production}-http-20261009.json` y los dos informes `new-routes`. La captura administrativa es `outputs/portal-production-notices-release-20261009.jpg`. El escaneo de logs del release en esa ventana devolvió cero entradas de nivel error; no se inspeccionaron drains ni se configuró monitoreo externo.
 
 Scanner, recepción de correos Auth, permiso/backup de producción y aceptación escolar siguen pendientes. Ver [avisos externos preparados](notificaciones-externas.md) y [registro de requisitos](estado-requisitos.md).
+
+## Release de estabilidad publicado · 9 de octubre de 2026
+
+Versión **READY `dpl_8YhGFfsnnz5MH1GpMN7v2cVFvJtT`**, URL única https://el-mundo-de-los-ninos-portal-513l6al28-pandito.vercel.app, promovida al dominio habitual desde el mismo build comprobado. Fuente del código: `fadddc3e0b35b4413fa73cf948668d1547144c24`, 538 blobs en GitHub privado escolar. Los commits posteriores de documentación no cambian ese código publicado.
+
+La suite final pasó **656 pruebas**, lint sin avisos, TypeScript y Next/Sites. Se verificaron **32 controles HTTP antes de promover y 32 en el dominio habitual**: páginas públicas, 404/noindex, redirecciones privadas antes del cuerpo, APIs anónimas y protección CSRF. El inventario real excluyó configuraciones, evidencias y temporales; no encontró los tres valores privados comprobados.
+
+Incluye pantallas de error/carga/404 con el logo oficial, hook de errores acotado sin campos de solicitud/error, acceso de API/página con tres verificaciones por invocación e historial paginado de observaciones. Se mantienen verificaciones frescas por petición y autorización RLS/RPC. El destino legacy exige asignación docente real para notas internas; una denegación no se muestra como historial vacío.
+
+La revisión CUA del dominio comprobó Seguimiento y Mi cuenta de administración, sin matrícula, un título/región principal y sin desbordamiento. Los tres campos de contraseña estaban vacíos y los avisos externos permanecían ocultos. La pantalla 404 y su enlace al inicio funcionaron. Captura: `outputs/portal-readiness-release-20261009.jpg`; reporte `outputs/portal-production-readiness-ui-20261009.json`. No se introdujeron alumnos ni se provocaron excepciones en producción. El fixture local separado de error/carga pasó 23 comprobaciones HTTP y CUA 320/1151; se detuvo después.
+
+La inspección acotada de logs del nuevo despliegue, antes de promoverlo, devolvió cero filas de nivel error. No acredita un servicio externo de alertas, drains o retención. No se configuraron Google, analizador privado, SMTP, SQL29, SQL31 ni proveedores de avisos por este release; las cargas publicadas siguen cerradas mientras falte el análisis. Aceptación de docentes/familias, Meet, respaldos escolares y revisión de privacidad continúan en el registro de requisitos.
+
+Evidencias: `outputs/vercel-release-readiness-20261009.json`, `outputs/release-validation-readiness3-20261009.json`, `outputs/vercel-readiness-{stage,production}-http-20261009.json`, informes `new-routes`, inventario `vercel-upload-readiness-audit-20261009.json` y `github-publication-remote-readiness-20261009.json`.

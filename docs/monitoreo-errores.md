@@ -38,3 +38,7 @@ node --experimental-strip-types --test tests/school-error-monitor.test.mjs
 Las pruebas dirigidas verifican el contrato local; el build general y la publicación corresponden al proceso de release coordinado.
 
 Resultado dirigido: **13 pruebas PASS**, sin fallos ni skips. ESLint y TypeScript focalizado sin errores; no se realizó una prueba de error ni una solicitud en producción.
+
+## Estado de integración publicada
+
+La integración posterior quedó READY `dpl_8YhGFfsnnz5MH1GpMN7v2cVFvJtT` en el dominio habitual, con fuente `fadddc3e0b35b4413fa73cf948668d1547144c24`. Pasaron 656 pruebas generales, lint, TypeScript, ambas compilaciones y 32 controles HTTP por destino. La consulta administrativa con escuela vacía y la pantalla pública inexistente se comprobaron; los ensayos dirigidos/locales de esta guía conservan su alcance y no equivalen a aceptación de familias o datos en producción. Ver [release y límites](hosting-vercel.md#release-de-estabilidad-publicado--9-de-octubre-de-2026).

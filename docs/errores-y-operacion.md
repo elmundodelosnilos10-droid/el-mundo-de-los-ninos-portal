@@ -50,3 +50,7 @@ El 9 de octubre se copiaron byte por byte los componentes, estilos y logo a un f
 CUA comprobó los callbacks de las páginas reales en ancho 320 y 1151: restablecer y reintentar se ejecutaron solo al pulsar el botón. También se observaron el estado accesible de carga, logo, página inexistente y documento global sin desbordamiento horizontal. El documento global de muestra era SSR, sin manejador en navegador; sus callbacks se probaron por separado con React. No es prueba de recuperación de una caída en Vercel ni de teléfono físico. Evidencia privada: `outputs/school-fallback-render-local-20261009.json`, `outputs/school-fallback-render-browser-20261009.json` y captura `outputs/portal-local-fallback-mobile-20261009.jpg`.
 
 El fixture quedó detenido, su puerto cerrado y sus procesos ausentes según una comprobación independiente (`outputs/school-fallback-render-stop-20261009.json`). No se provocaron fallos ni se modificaron expedientes en producción.
+
+## Estado de integración publicada
+
+La integración posterior quedó READY `dpl_8YhGFfsnnz5MH1GpMN7v2cVFvJtT` en el dominio habitual, con fuente `fadddc3e0b35b4413fa73cf948668d1547144c24`. Pasaron 656 pruebas generales, lint, TypeScript, ambas compilaciones y 32 controles HTTP por destino. La consulta administrativa con escuela vacía y la pantalla pública inexistente se comprobaron; los ensayos dirigidos/locales de esta guía conservan su alcance y no equivalen a aceptación de familias o datos en producción. Ver [release y límites](hosting-vercel.md#release-de-estabilidad-publicado--9-de-octubre-de-2026).

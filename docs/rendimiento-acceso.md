@@ -45,3 +45,7 @@ node --experimental-strip-types --test tests/supabase-runtime-session.test.mjs
 **22 pruebas dirigidas PASS**, con clientes REST y rutas reales del repositorio, bindings sintéticos y **HTTP simulado**. Comprueban tres llamadas exactas en actor de API/página, nueva verificación ante cambio de roles/baja, cuentas intercaladas sin cruce, copias congeladas, rechazo de sesiones falsas/modificadas y contexto de navegador, rechazo de sesión expirada, errores de base/credenciales y JSON de Auth sin tokens. Las pruebas históricas de acceso/recuperación/cambio de contraseña permanecen en esa suite.
 
 Lint de los archivos cambiados y TypeScript de fuentes terminaron sin errores; la integración todavía debe ejecutar sus compilaciones y comprobaciones del hosting. Reducir solicitudes duplicadas no acredita una mejora concreta de tiempo o capacidad: esa medición queda pendiente en un entorno autorizado, sin datos personales.
+
+## Estado de integración publicada
+
+La integración posterior quedó READY `dpl_8YhGFfsnnz5MH1GpMN7v2cVFvJtT` en el dominio habitual, con fuente `fadddc3e0b35b4413fa73cf948668d1547144c24`. Pasaron 656 pruebas generales, lint, TypeScript, ambas compilaciones y 32 controles HTTP por destino. La consulta administrativa con escuela vacía y la pantalla pública inexistente se comprobaron; los ensayos dirigidos/locales de esta guía conservan su alcance y no equivalen a aceptación de familias o datos en producción. Ver [release y límites](hosting-vercel.md#release-de-estabilidad-publicado--9-de-octubre-de-2026).
