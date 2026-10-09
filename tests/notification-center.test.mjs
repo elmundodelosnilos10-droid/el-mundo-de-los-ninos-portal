@@ -152,6 +152,20 @@ test("closing the real notice panel restores focus to its Avisos trigger", () =>
   fake.cleanup();
 });
 
+test("Escape dismisses the real notice panel and restores trigger focus; other keys and closed Escape remain unchanged", () => {
+  const fake = componentHarness(); let tree = fake.render();
+  let focusCalls = 0; let prevented = 0;
+  elements(tree, "button")[0].props.ref.current = { focus: () => { focusCalls++; } };
+  tree.props.onKeyDown({ key: "Escape", preventDefault: () => { prevented++; } });
+  assert.equal(focusCalls, 0); assert.equal(prevented, 0);
+  elements(tree, "button")[0].props.onClick(); tree = fake.render();
+  tree.props.onKeyDown({ key: "Tab", preventDefault: () => { prevented++; } });
+  assert.equal(elements(fake.render(), "section").length, 1); assert.equal(prevented, 0);
+  tree.props.onKeyDown({ key: "Escape", preventDefault: () => { prevented++; } }); tree = fake.render();
+  assert.equal(elements(tree, "section").length, 0); assert.equal(focusCalls, 1); assert.equal(prevented, 1);
+  fake.cleanup();
+});
+
 test("actual notification component effects show loading, confirmed empty and failure/retry without false empty or replacing valid rows", async () => {
   const fake = componentHarness(); let tree = fake.render(); fake.runEffects();
   elements(tree, "button")[0].props.onClick(); tree = fake.render(); assert.match(text(tree), /Cargando avisos/); assert.doesNotMatch(text(tree), /No tienes avisos disponibles/);

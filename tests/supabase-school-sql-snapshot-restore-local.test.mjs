@@ -5,15 +5,15 @@ import { mkdtemp,mkdir,realpath,rm,writeFile,chmod,utimes } from 'node:fs/promis
 import path from 'node:path';
 import { loadSchoolBackupTables,stableStringify } from '../scripts/supabase-school-backup.mjs';
 import { archiveSqlSnapshot,SQL_SNAPSHOT_AUTH_CATALOG,SQL_SNAPSHOT_PROJECT_REF } from '../scripts/supabase-school-sql-snapshot.mjs';
-import { conservativeSequenceRestart,openSchoolSnapshotLocalDatabase,restoreSchoolSnapshotRows,validateSnapshotNativeTarget,readSchoolSqlSnapshotArchive } from '../scripts/supabase-school-sql-snapshot-restore-local.mjs';
+import { conservativeSequenceRestart,openSchoolSnapshotLocalDatabase,restoreSchoolSnapshotRows,validateSnapshotNativeTarget,readSchoolSqlSnapshotArchive,preflightSchoolSnapshotMetadata } from '../scripts/supabase-school-sql-snapshot-restore-local.mjs';
 const nativeInstances=()=>[{creation:{service:'pgmeta',config:{databaseUrl:'postgresql://supabase_admin:synthetic-local-admin@127.0.0.1:38888/postgres'}}}];
 const tables=await loadSchoolBackupTables(),id='11111111-1111-4111-8111-111111111111',stackId='a'.repeat(64);
 function snapshot(){
  const authColumns={...Object.fromEntries(SQL_SNAPSHOT_AUTH_CATALOG.map(name=>[name,['id']])),users:['id','encrypted_password'],identities:['id','user_id','provider','provider_id'],schema_migrations:['version'],refresh_tokens:['id','token']};
- return {format:'school-sql-snapshot',version:1,project_ref:SQL_SNAPSHOT_PROJECT_REF,captured_at:'2026-10-09T00:00:00Z',postgres_version:'synthetic PG17',public_catalog:tables.map(t=>t.name),auth_catalog:[...SQL_SNAPSHOT_AUTH_CATALOG],public_rows:Object.fromEntries(tables.map(t=>[t.name,[]])),auth_rows:{...Object.fromEntries(SQL_SNAPSHOT_AUTH_CATALOG.map(name=>[name,[]])),users:[JSON.stringify({id,encrypted_password:'$2a$10$'+'a'.repeat(53)})],schema_migrations:Array.from({length:82},(_,i)=>JSON.stringify({version:String(i+1)}))},columns:[...tables.flatMap(t=>t.columns.map((column_name,i)=>({table_schema:'public',table_name:t.name,column_name,ordinal_position:i+1}))),...Object.entries(authColumns).flatMap(([table_name,cols])=>cols.map((column_name,i)=>({table_schema:'auth',table_name,column_name,ordinal_position:i+1})))],constraints:null,indexes:null,triggers:null,functions:null,policies:null,table_acl:null,migration_history:[],enums:null,sequences:[],storage_buckets:[{id:'school-files',name:'school-files',public:false}],school_file_object_count:0,students_count:0};
+ return {format:'school-sql-snapshot',version:1,project_ref:SQL_SNAPSHOT_PROJECT_REF,captured_at:'2026-10-09T00:00:00Z',postgres_version:'synthetic PG17',public_catalog:tables.map(t=>t.name),auth_catalog:[...SQL_SNAPSHOT_AUTH_CATALOG],public_rows:Object.fromEntries(tables.map(t=>[t.name,[]])),auth_rows:{...Object.fromEntries(SQL_SNAPSHOT_AUTH_CATALOG.map(name=>[name,[]])),users:[JSON.stringify({id,encrypted_password:'$2a$10$'+'a'.repeat(53)})],schema_migrations:Array.from({length:82},(_,i)=>JSON.stringify({version:String(i+1)}))},columns:[...tables.flatMap(t=>t.columns.map((column_name,i)=>({table_schema:'public',table_name:t.name,column_name,ordinal_position:i+1}))),...Object.entries(authColumns).flatMap(([table_name,cols])=>cols.map((column_name,i)=>({table_schema:'auth',table_name,column_name,ordinal_position:i+1})))],constraints:tables.map(t=>({schema:'public',table:t.name,name:t.name+'_pkey',kind:'p',definition:'PRIMARY KEY ('+t.primaryKey.join(', ')+')'})),indexes:tables.map(t=>({schemaname:'public',tablename:t.name,indexname:t.name+'_pkey',tablespace:null,indexdef:'CREATE UNIQUE INDEX '+t.name+'_pkey ON public.'+t.name+' ('+t.primaryKey.join(', ')+')'})),triggers:[{schema:'public',table:'user_roles',name:'synthetic_guard',definition:'CREATE TRIGGER synthetic_guard synthetic'}],functions:[{name:'school_actor_active',definition:'CREATE FUNCTION public.school_actor_active() synthetic'}],policies:[{schemaname:'public',tablename:'profiles',policyname:'synthetic_profile_read',permissive:'PERMISSIVE',roles:['authenticated'],cmd:'SELECT',qual:'synthetic_policy',with_check:null}],table_acl:tables.map(t=>({schema:'public',table:t.name,owner:'postgres',acl:'{postgres=arwdDxt/postgres}',rls:true,force_rls:true})),migration_history:[],enums:[{schema:'auth',type:'synthetic_auth_enum',sort_order:1,label:'synthetic'}],sequences:[],storage_buckets:[{id:'school-files',name:'school-files',public:false}],school_file_object_count:0,students_count:0};
 }
 function receipt(){return {id:stackId,env:{DB_URL:'postgresql://postgres:synthetic-local-password@127.0.0.1:38888/postgres'},endpoints:{'rest.http':{url:'http://127.0.0.1:38889/'},'auth.http':{url:'http://127.0.0.1:38889/'},'storage.http':{url:'http://127.0.0.1:38889/'}}};}
-async function sqlFixture(t,source,{failAt=null,foreignInvalid=false,columnMismatch=false,unknownRow=false,generated=[],sequence=null,storageObjects='0',defaultMatching=false,nonemptyAuth=false,migrationsMismatch=false,postWriteMismatch=false}={}){
+async function sqlFixture(t,source,{failAt=null,foreignInvalid=false,columnMismatch=false,unknownRow=false,generated=[],sequence=null,storageObjects='0',defaultMatching=false,nonemptyAuth=false,migrationsMismatch=false,postWriteMismatch=false,metadataMismatch=null,storageMetadataExtra=false,targetAclExtraGrant=false,targetRlsDisabled=false,targetPolicyExtra=false}={}){
  const base=await mkdtemp('/tmp/school-isolated-runtime-sqltest-');t.after(()=>rm(base,{recursive:true,force:true}));
  const project=path.join(base,'new-target');await mkdir(project);const projectDirectory=await realpath(project);
  const stateDirectory=path.join(base,'home','stacks',stackId);await mkdir(stateDirectory,{recursive:true});const stateFile=path.join(stateDirectory,'state.json'),receiptFile=path.join(base,'receipt.json');
@@ -24,13 +24,21 @@ async function sqlFixture(t,source,{failAt=null,foreignInvalid=false,columnMisma
  if(defaultMatching){const row=Object.fromEntries(tables.find(t=>t.name==='communication_settings').columns.map(column=>[column,column==='id'?'school':null]));source.public_rows.communication_settings=[JSON.stringify(row)];original['public.communication_settings']=[JSON.stringify(row)];}
  if(nonemptyAuth)original['auth.users']=[...source.auth_rows.users];
  if(migrationsMismatch)original['auth.schema_migrations'][0]='{"version":"different"}';
+ const metadataTarget=structuredClone(Object.fromEntries(['constraints','indexes','triggers','functions','policies','table_acl','enums'].map(field=>[field,source[field]??[]])));
  let current=structuredClone(original);const calls=[];let rollback=false,committed=false,restart;
  const unsafe=async(text,params=[])=>{
    calls.push({text,params});if(failAt&&text.includes(failAt)){const error=Error('SYNTHETIC PRIVATE DRIVER ERROR password/hash/token');error.code='42703';throw error;}
    if(text.includes('r.rolsuper'))return [{rolsuper:true}];
    if(text.startsWith('SET ')||text.startsWith('LOCK '))return [];
    if(text.includes('AS relation_name'))return Object.keys(original).sort().map(relation_name=>({relation_name}));
-   if(text.startsWith('SELECT value::text AS row_text')){const key=text.match(/->'([^']+)'/)[1];return (JSON.parse(params[0])[key]??[]).map(x=>({row_text:stableStringify(x)})).sort((a,b)=>a.row_text.localeCompare(b.row_text));}
+   const aclNormalize=row=>({...row,acl:row.acl===null?[row.owner+'=arwdDxt/'+row.owner]:row.acl.slice(1,-1).split(',').sort()});
+   if(text.startsWith('SELECT (value ||'))return JSON.parse(params[0]).table_acl.filter(row=>row.schema==='public').map(row=>({row_text:stableStringify(aclNormalize(row))})).sort((a,b)=>a.row_text.localeCompare(b.row_text));
+   if(text.startsWith('SELECT value::text AS row_text')){const key=text.match(/->'([^']+)'/)[1];let rows=JSON.parse(params[0])[key]??[];const scope=text.match(/WHERE value->>'([^']+)'='([^']+)'/);if(scope)rows=rows.filter(row=>row[scope[1]]===scope[2]);return rows.map(x=>({row_text:stableStringify(x)})).sort((a,b)=>a.row_text.localeCompare(b.row_text));}
+   let metadataField;
+   if(text.startsWith('SELECT jsonb_build_object'))metadataField=text.includes('FROM pg_constraint')?'constraints':text.includes('FROM pg_trigger')?'triggers':text.includes('FROM pg_proc')?'functions':text.includes('FROM pg_type')?'enums':text.includes('FROM pg_class')?'table_acl':null;
+   if(text.startsWith('SELECT to_jsonb(i)::text'))metadataField='indexes';
+   if(text.startsWith('SELECT to_jsonb(p)::text'))metadataField='policies';
+   if(metadataField){const scope=text.includes("='storage'")?'storage':'public',scopeKey=['indexes','policies'].includes(metadataField)?'schemaname':'schema';let rows=metadataTarget[metadataField].filter(row=>metadataField==='functions'||row[scopeKey]===scope);if(metadataField==='table_acl'&&scope==='public'&&targetAclExtraGrant)rows=rows.map((row,i)=>i===0?{...row,acl:row.acl.slice(0,-1)+',=r/postgres}'}:row);if(metadataField==='table_acl'&&scope==='public'&&targetRlsDisabled)rows=rows.map((row,i)=>i===0?{...row,rls:false,force_rls:false}:row);if(metadataField==='policies'&&scope==='public'&&targetPolicyExtra)rows=[...rows,{...rows[0],policyname:'unexpected_public_all',roles:['public'],cmd:'ALL',qual:'true',with_check:'true'}];if(metadataMismatch===metadataField&&scope==='public')rows=rows.length?rows.slice(1):[{schema:'public',synthetic:'unexpected'}];if(storageMetadataExtra&&scope==='storage')rows=[...rows,{schema:'storage',synthetic:'managed-extra'}];if(metadataField==='table_acl'&&scope==='public')rows=rows.map(aclNormalize);return rows.map(row=>({row_text:stableStringify(row)})).sort((a,b)=>a.row_text.localeCompare(b.row_text));} 
    if(text.includes('to_jsonb(c)::text'))return (columnMismatch?source.columns.slice(1):source.columns).map(x=>({row_text:stableStringify(x)})).sort((a,b)=>a.row_text.localeCompare(b.row_text));
    if(text.startsWith('SELECT table_schema,table_name,column_name'))return generated;
    if(text.includes('FROM pg_trigger'))return [];
@@ -146,4 +154,39 @@ test('FK catalog uses PGconfmatchtype and explicit text arrays',async t=>{
 test('driver failure exposes only static phase and SQLSTATE, never private PGdetails',async t=>{
  const s=snapshot(),f=await sqlFixture(t,s,{failAt:"WHERE c.contype='f'"});
  await assert.rejects(restoreSchoolSnapshotRows({snapshot:s,sql:f.sql,tables}),error=>{assert.equal(error.code,'restore_transaction_failed');assert.equal(error.phase,'foreign_key_catalog');assert.equal(error.sqlState,'42703');assert.ok(!JSON.stringify(error).includes('PRIVATE'));assert.ok(!error.message.includes('password'));assert.equal(error.cause,undefined);return true;});assert.equal(f.rollback,true);
+});
+
+test('captured public metadata parity runs before inserts and rejects every component mismatch',async t=>{
+ for(const field of ['constraints','indexes','triggers','functions','policies','table_acl','enums']){const s=snapshot(),f=await sqlFixture(t,s,{metadataMismatch:field});await assert.rejects(restoreSchoolSnapshotRows({snapshot:s,sql:f.sql,tables}),error=>error.code==='metadata_public_mismatch_'+field&&error.phase==='captured_metadata_preflight');assert.equal(f.rollback,true);assert.ok(f.calls.every(call=>!call.text.startsWith('INSERT')));}
+});
+test('null or empty mandatory metadata is never accepted as successful parity',async t=>{
+ for(const field of ['constraints','indexes','triggers','functions','policies','table_acl'])for(const value of [null,[]]){const s=snapshot();s[field]=value;const f=await sqlFixture(t,s);await assert.rejects(preflightSchoolSnapshotMetadata({snapshot:s,sql:f.sql,tables}),error=>error.code==='metadata_capture_missing_'+field);assert.ok(f.calls.every(call=>!call.text.startsWith('INSERT')));}
+});
+test('metadata coverage rejects omitted public ACL, PK or index entries',async t=>{
+ for(const field of ['table_acl','constraints','indexes']){const s=snapshot();s[field].pop();const f=await sqlFixture(t,s);await assert.rejects(preflightSchoolSnapshotMetadata({snapshot:s,sql:f.sql,tables}),error=>['metadata_table_acl_coverage','metadata_primary_key_coverage','metadata_index_coverage'].includes(error.code));}
+});
+test('public grant expansion, disabled RLS and additional permissive policy all block import',async t=>{
+ for(const options of [{targetAclExtraGrant:true},{targetRlsDisabled:true},{targetPolicyExtra:true}]){const s=snapshot(),f=await sqlFixture(t,s,options);await assert.rejects(restoreSchoolSnapshotRows({snapshot:s,sql:f.sql,tables}),error=>error.code.startsWith('metadata_public_mismatch_'));assert.ok(f.calls.every(call=>!call.text.startsWith('INSERT')));}
+});
+test('ACL order is canonical and NULL rowACL has PostgreSQL owner defaults',async t=>{
+ const s=snapshot();s.table_acl[0].acl='{postgres=arwdDxt/postgres,authenticated=r/postgres}';const f=await sqlFixture(t,s);s.table_acl[0].acl='{authenticated=r/postgres,postgres=arwdDxt/postgres}';s.table_acl[1].acl=null;
+ const result=await preflightSchoolSnapshotMetadata({snapshot:s,sql:f.sql,tables});assert.equal(result.publicCapturedMetadataVerified,true);
+ assert.ok(f.calls.some(call=>call.text.includes('acldefault')&&call.text.includes('aclitem[]')));
+});
+test('read-only metadata API accepts preserved occupied target without replay or DDL',async t=>{
+ const s=snapshot(),f=await sqlFixture(t,s,{nonemptyAuth:true}),result=await preflightSchoolSnapshotMetadata({snapshot:s,sql:f.sql,tables});
+ assert.equal(result.scope,'public-captured-v1');assert.equal(result.publicCapturedMetadataVerified,true);assert.equal(result.components.table_acl.count,33);assert.equal(result.components.enums.sourceCapture,'declared_empty_public_scope');
+ assert.ok(f.calls.some(call=>call.text==='SET TRANSACTION READ ONLY'));assert.ok(f.calls.every(call=>!/^INSERT|ALTER|DELETE|LOCK/.test(call.text)&&!call.text.includes('session_replication_role')));assert.equal(f.rows['auth.users'].length,1);
+ assert.deepEqual(result.uncaptured,['function_acl','event_trigger_registrations','trigger_enabled_state','managed_service_configuration']);assert.equal(result.managedAuthMetadataVerified,false);
+});
+test('managed Storage differences are explicit and never require permission expansion',async t=>{
+ const s=snapshot(),f=await sqlFixture(t,s,{storageMetadataExtra:true}),result=await preflightSchoolSnapshotMetadata({snapshot:s,sql:f.sql,tables});
+ for(const component of Object.values(result.managedStorage.components)){assert.equal(component.parity,'different');assert.equal(component.sourceCount,0);assert.equal(component.targetCount,1);}
+ assert.equal(result.managedStorage.permissionChangesPerformed,false);assert.equal(result.managedStorage.managedServiceEquivalenceVerified,false);assert.ok(f.calls.every(call=>!/^GRANT|REVOKE|ALTER|INSERT|DELETE/.test(call.text)));
+});
+test('legitimate empty public enums are explicitly marked, not silently inferred complete',async t=>{
+ const s=snapshot();s.enums=null;const f=await sqlFixture(t,s),result=await preflightSchoolSnapshotMetadata({snapshot:s,sql:f.sql,tables});assert.deepEqual(result.components.enums,{count:0,parity:'matching',sourceCapture:'declared_null_empty'});
+});
+test('metadata driver errors redact DDL and report only generic phase/SQLSTATE',async t=>{
+ const s=snapshot(),f=await sqlFixture(t,s,{failAt:'FROM pg_policies'});await assert.rejects(preflightSchoolSnapshotMetadata({snapshot:s,sql:f.sql,tables}),error=>{assert.equal(error.code,'metadata_preflight_failed');assert.equal(error.phase,'captured_metadata_preflight');assert.equal(error.sqlState,'42703');assert.ok(!JSON.stringify(error).includes('PRIVATE'));assert.equal(error.cause,undefined);return true;});
 });
