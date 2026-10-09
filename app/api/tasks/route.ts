@@ -1,5 +1,5 @@
 import { env } from "@/lib/runtime/env";
-import { and, asc, eq, inArray, isNull } from "drizzle-orm";
+import { and, asc, count, eq, inArray, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { getDb } from "@/db";
 import { auditLog, enrollments, files, groups, guardians, studentGuardians, students, submissions, taskFiles, tasks } from "@/db/schema";
@@ -10,49 +10,88 @@ import { createSchoolDatabaseClient, SupabaseDatabaseError } from "@/lib/supabas
 
 const input = z.object({ groupId: z.uuid(), title: z.string().trim().min(2).max(120), instructions: z.string().trim().min(2).max(3000), dueAt: z.iso.datetime({ offset: true }).optional() });
 
+function taskPage(params: URLSearchParams) {
+  const positiveInteger = (name: string, fallback: number) => {
+    const values = params.getAll(name);
+    if (!values.length) return fallback;
+    if (values.length !== 1 || !/^[0-9]+$/.test(values[0])) return null;
+    const value = Number(values[0]);
+    return Number.isSafeInteger(value) && value > 0 ? value : null;
+  };
+  const page = positiveInteger("page", 1);
+  const pageSize = positiveInteger("pageSize", 25);
+  if (page === null || pageSize === null || pageSize > 100) return null;
+  const offset = (page - 1) * pageSize;
+  // The existing RPC accepts offsets through 100000; reject unsupported pages before querying.
+  if (!Number.isSafeInteger(offset) || offset > 100_000) return null;
+  return { page, pageSize, offset };
+}
+
+function taskReadError(status: Parameters<typeof errorResponse>[0], message: string) {
+  const response = errorResponse(status, message);
+  response.headers.set("Cache-Control", "no-store");
+  return response;
+}
+
 export async function GET(request: Request) {
-  const actor = await actorFromRequest(request);
-  if (!actor) return errorResponse(401, "Inicia sesión.");
-  if (env.SCHOOL_DATA_PROVIDER === "supabase") {
-    if (!actor.supabaseAuth) return errorResponse(503, "La sesión no está vinculada con Supabase. Vuelve a iniciar sesión.");
-    try {
+  try {
+    const actor = await actorFromRequest(request);
+    if (!actor) return taskReadError(401, "Inicia sesión.");
+    if (!hasRole(actor, "superadmin", "direccion", "docente", "tutor")) return taskReadError(403, "No tienes permiso para consultar las tareas.");
+    const pagination = taskPage(new URL(request.url).searchParams);
+    if (!pagination) return taskReadError(400, "Revisa la página y la cantidad de tareas solicitadas.");
+    const { page, pageSize, offset } = pagination;
+    const feed = (items: unknown[], total: number) => Response.json({
+      items, total, page, pageSize, hasMore: total - offset > items.length,
+    }, { headers: { "Cache-Control": "no-store" } });
+    if (env.SCHOOL_DATA_PROVIDER === "supabase") {
+      if (!actor.supabaseAuth || actor.supabaseAuth.userId !== actor.id) return taskReadError(503, "La sesión no está vinculada con Supabase. Vuelve a iniciar sesión.");
       const result = await createSchoolDatabaseClient(env).rpc<{ items: unknown[]; total: number }>(actor.supabaseAuth.accessToken, "school_list_tasks", {
-        p_limit: 200, p_offset: 0,
+        p_limit: pageSize, p_offset: offset,
       });
       const payload = result.data[0];
-      if (!payload || !Array.isArray(payload.items) || !Number.isSafeInteger(payload.total)) return errorResponse(503, "No se pudieron consultar las tareas.");
-      return Response.json({ items: payload.items }, { headers: { "Cache-Control": "no-store" } });
-    } catch {
-      return errorResponse(503, "No se pudieron consultar las tareas.");
+      if (!payload || !Array.isArray(payload.items) || payload.items.length > pageSize || !Number.isSafeInteger(payload.total) || payload.total < 0) return taskReadError(503, "No se pudieron consultar las tareas.");
+      return feed(payload.items, payload.total);
     }
+    const ids = await accessibleGroupIds(actor);
+    if (!ids.length) return feed([], 0);
+    const db = getDb();
+    const scope = and(inArray(tasks.groupId, ids), isNull(tasks.archivedAt));
+    const [rows, totals] = await Promise.all([
+      db.select({ id: tasks.id, groupId: tasks.groupId, groupName: groups.name, stage: groups.stage, title: tasks.title, instructions: tasks.instructions, dueAt: tasks.dueAt, createdAt: tasks.createdAt, createdBy: tasks.createdBy })
+        .from(tasks).innerJoin(groups, eq(groups.id, tasks.groupId)).where(scope).orderBy(asc(tasks.dueAt), asc(tasks.id)).limit(pageSize).offset(offset),
+      db.select({ value: count() }).from(tasks).innerJoin(groups, eq(groups.id, tasks.groupId)).where(scope),
+    ]);
+    const total = totals[0]?.value;
+    if (!Number.isSafeInteger(total) || total < 0) return taskReadError(503, "No se pudieron consultar las tareas.");
+    const attachments = rows.length ? await db.select({ taskId: taskFiles.taskId, id: files.id, name: files.originalName }).from(taskFiles).innerJoin(files, eq(files.id, taskFiles.fileId)).where(and(inArray(taskFiles.taskId, rows.map(row => row.id)), isNull(files.deletedAt))) : [];
+    let familyChildren: { id: string; groupId: string }[] = [];
+    let familyStatuses: { taskId: string; studentId: string; status: string }[] = [];
+    if (hasRole(actor, "tutor") && rows.length) {
+      familyChildren = await db.select({ id: students.id, groupId: enrollments.groupId }).from(studentGuardians)
+        .innerJoin(guardians, eq(guardians.id, studentGuardians.guardianId))
+        .innerJoin(students, eq(students.id, studentGuardians.studentId))
+        .innerJoin(enrollments, eq(enrollments.studentId, students.id))
+        .where(and(eq(guardians.userId, actor.id), eq(guardians.active, true), eq(studentGuardians.active, true), eq(students.active, true), inArray(enrollments.groupId, ids), isNull(enrollments.endedAt)));
+      const childIds = [...new Set(familyChildren.map(child => child.id))];
+      if (childIds.length) familyStatuses = await db.select({ taskId: submissions.taskId, studentId: submissions.studentId, status: submissions.status })
+        .from(submissions).where(and(inArray(submissions.taskId, rows.map(row => row.id)), inArray(submissions.studentId, childIds)));
+    }
+    const now = Date.now();
+    return feed(rows.map(row => ({
+      ...row,
+      files: attachments.filter(file => file.taskId === row.id).map(file => ({ id: file.id, name: file.name, url: `/api/files/${file.id}` })),
+      studentStatuses: hasRole(actor, "tutor") ? familyChildren.filter(child => child.groupId === row.groupId).map(child => {
+        const submission = familyStatuses.find(item => item.taskId === row.id && item.studentId === child.id);
+        return { studentId: child.id, status: submission?.status ?? (row.dueAt && row.dueAt.getTime() < now ? "vencida" : "pendiente") };
+      }) : undefined,
+    })), total);
+  } catch (cause) {
+    if (cause instanceof SupabaseDatabaseError && cause.status === 401) return taskReadError(401, "Vuelve a iniciar sesión.");
+    if (cause instanceof SupabaseDatabaseError && cause.status === 403) return taskReadError(403, "No tienes permiso para consultar las tareas.");
+    if (cause instanceof SupabaseDatabaseError && cause.status === 404) return taskReadError(404, "Tareas no disponibles.");
+    return taskReadError(503, "No se pudieron consultar las tareas.");
   }
-  const ids = await accessibleGroupIds(actor);
-  if (!ids.length) return Response.json({ items: [] }, { headers: { "Cache-Control": "no-store" } });
-  const db = getDb();
-  const rows = await db.select({ id: tasks.id, groupId: tasks.groupId, groupName: groups.name, stage: groups.stage, title: tasks.title, instructions: tasks.instructions, dueAt: tasks.dueAt, createdAt: tasks.createdAt, createdBy: tasks.createdBy })
-    .from(tasks).innerJoin(groups, eq(groups.id, tasks.groupId)).where(and(inArray(tasks.groupId, ids), isNull(tasks.archivedAt))).orderBy(asc(tasks.dueAt)).limit(200);
-  const attachments = rows.length ? await db.select({ taskId: taskFiles.taskId, id: files.id, name: files.originalName }).from(taskFiles).innerJoin(files, eq(files.id, taskFiles.fileId)).where(and(inArray(taskFiles.taskId, rows.map(row => row.id)), isNull(files.deletedAt))) : [];
-  let familyChildren: { id: string; groupId: string }[] = [];
-  let familyStatuses: { taskId: string; studentId: string; status: string }[] = [];
-  if (hasRole(actor, "tutor") && rows.length) {
-    familyChildren = await db.select({ id: students.id, groupId: enrollments.groupId }).from(studentGuardians)
-      .innerJoin(guardians, eq(guardians.id, studentGuardians.guardianId))
-      .innerJoin(students, eq(students.id, studentGuardians.studentId))
-      .innerJoin(enrollments, eq(enrollments.studentId, students.id))
-      .where(and(eq(guardians.userId, actor.id), eq(guardians.active, true), eq(studentGuardians.active, true), eq(students.active, true), inArray(enrollments.groupId, ids), isNull(enrollments.endedAt)));
-    const childIds = [...new Set(familyChildren.map(child => child.id))];
-    if (childIds.length) familyStatuses = await db.select({ taskId: submissions.taskId, studentId: submissions.studentId, status: submissions.status })
-      .from(submissions).where(and(inArray(submissions.taskId, rows.map(row => row.id)), inArray(submissions.studentId, childIds)));
-  }
-  const now = Date.now();
-  return Response.json({ items: rows.map(row => ({
-    ...row,
-    files: attachments.filter(file => file.taskId === row.id).map(file => ({ id: file.id, name: file.name, url: `/api/files/${file.id}` })),
-    studentStatuses: hasRole(actor, "tutor") ? familyChildren.filter(child => child.groupId === row.groupId).map(child => {
-      const submission = familyStatuses.find(item => item.taskId === row.id && item.studentId === child.id);
-      return { studentId: child.id, status: submission?.status ?? (row.dueAt && row.dueAt.getTime() < now ? "vencida" : "pendiente") };
-    }) : undefined,
-  })) }, { headers: { "Cache-Control": "no-store" } });
 }
 
 export async function POST(request: Request) {
