@@ -23,6 +23,16 @@ declare namespace Cloudflare {
     SCHOOL_AUTH_PROVIDER?: "better-auth" | "supabase";
     SCHOOL_DATA_PROVIDER?: "d1" | "supabase";
     SCHOOL_REALTIME_PROVIDER?: "disabled" | "supabase";
+    // External notices remain off until SQL31 and private provider configuration are approved.
+    SCHOOL_NOTIFICATION_SETTINGS_ENABLED?: "disabled" | "schema31-ready";
+    SCHOOL_NOTIFICATION_EMAIL_PROVIDER?: "disabled" | "resend";
+    SCHOOL_NOTIFICATION_PUSH_PROVIDER?: "disabled" | "webpush";
+    SCHOOL_NOTIFICATION_WORKER_ENABLED?: "disabled" | "manual-approved";
+    SCHOOL_NOTIFICATION_RESEND_KEY?: string;
+    SCHOOL_NOTIFICATION_EMAIL_FROM?: string;
+    SCHOOL_NOTIFICATION_VAPID_PUBLIC_KEY?: string;
+    SCHOOL_NOTIFICATION_VAPID_PRIVATE_KEY?: string;
+    SCHOOL_NOTIFICATION_VAPID_SUBJECT?: string;
     APP_ORIGIN?: string;
   }
 }

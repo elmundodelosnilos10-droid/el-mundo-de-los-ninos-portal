@@ -9,6 +9,8 @@ import { PasswordChangeForm } from "./password-change-form";
 import { env } from "@/lib/runtime/env";
 import { createSchoolDatabaseClient } from "@/lib/supabase/database";
 import { readFamilyConsents, type FamilyConsentRecord } from "@/lib/supabase/family-consents";
+import { externalNoticeConfiguration, type ExternalNoticeEnvironment } from "@/lib/school-notification-delivery";
+import { NotificationPreferences } from "./notification-preferences";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +20,11 @@ export default async function MiCuenta() {
   const role = actor.roles[0];
   if (!role) redirect("/");
   const isTutor = actor.roles.includes("tutor");
+  const adultNotices = env.SCHOOL_AUTH_PROVIDER === "supabase" && env.SCHOOL_DATA_PROVIDER === "supabase" &&
+    !actor.roles.includes("alumno") && actor.roles.some(role => ["superadmin", "direccion", "docente", "tutor"].includes(role));
+  const noticeCapabilities = adultNotices ? externalNoticeConfiguration(env as unknown as ExternalNoticeEnvironment) : null;
+  const noticeSettingsReady = (env as unknown as { SCHOOL_NOTIFICATION_SETTINGS_ENABLED?: string }).SCHOOL_NOTIFICATION_SETTINGS_ENABLED === "schema31-ready";
+  const showNoticePreferences = adultNotices && (noticeSettingsReady || noticeCapabilities?.email || noticeCapabilities?.webpush);
   let consentRecords: FamilyConsentRecord[] = [];
   let consentLoadFailed = false;
   if (isTutor) {
@@ -49,6 +56,7 @@ export default async function MiCuenta() {
       <p><strong>Correo escolar:</strong> {actor.email}</p>
       <p>Si necesitas corregir estos datos, comunícate con dirección.</p>
     </section>
+    {showNoticePreferences ? <NotificationPreferences /> : null}
     {isTutor && <section className="portal-panel account-details-panel">
       <h2>Autorizaciones documentadas</h2>
       <p>Consulta las decisiones que Dirección registró con el aviso de la escuela. Esta pantalla no solicita ni modifica autorizaciones.</p>

@@ -33,12 +33,14 @@ export function parseSchoolSchema(sql) {
   return tables;
 }
 
-export async function loadSchoolBackupTables({ legacySchoolSchema = false } = {}) {
+export async function loadSchoolBackupTables({ legacySchoolSchema = false, externalNoticesSchema = false } = {}) {
+  if (legacySchoolSchema && externalNoticesSchema) throw Error("Los catálogos histórico y de avisos externos no se pueden combinar.");
   const baseline = parseSchoolSchema(await readFile(schemaFile, "utf8"));
   if (legacySchoolSchema) return baseline;
   const tables = [...baseline];
   const names = new Set(tables.map(table => table.name));
-  for (const file of backupSchemaFiles) {
+  const catalogFiles = externalNoticesSchema ? [...backupSchemaFiles, path.join(root, "supabase/migrations/20261031000000_school_notification_delivery.sql")] : backupSchemaFiles;
+  for (const file of catalogFiles) {
     for (const table of parseSchoolSchema(await readFile(file, "utf8"))) {
       if (names.has(table.name)) throw Error(`El catálogo de respaldo repite public.${table.name}.`);
       names.add(table.name);
@@ -141,6 +143,9 @@ async function readRows(client, table) {
 
 function describeSchema(openApi, tables) {
   if (!openApi || typeof openApi !== "object" || !openApi.paths || !openApi.definitions) throw Error("Supabase no expuso el esquema PostgREST verificable; se detuvo la operación.");
+  const externalNames = ["notification_channel_preferences", "school_push_subscriptions", "notification_delivery_outbox"];
+  const externalVisible = externalNames.some(name => openApi.paths[`/${name}`] || openApi.definitions[name]) || Boolean(openApi.paths["/rpc/school_claim_notification_deliveries"]);
+  if (externalVisible && !externalNames.every(name => tables.some(table => table.name === name))) throw Error("El esquema remoto incluye avisos externos. Selecciona explícitamente el catálogo de 36 tablas; no se exportó un respaldo parcial de 33.");
   const actual = [];
   for (const table of tables) {
     const pathKey = `/${table.name}`;
@@ -219,7 +224,8 @@ async function writeEncrypted(directory, relative, bytes, key) {
   await writeFile(file, encryptBackupFile(bytes, key, relative), { mode: 0o600, flag: "wx" });
 }
 
-export async function createBackup({ directory, client, tables, passphrase, now = new Date() }) {
+export async function createBackup({ directory, client, tables, passphrase, now = new Date(), externalDeliveryWorkerPaused = false }) {
+  if (tables.some(table => table.name === "notification_delivery_outbox") && externalDeliveryWorkerPaused !== true) throw Error("Confirma que el dispatcher de avisos externos está detenido antes del respaldo.");
   const salt = randomBytes(16);
   const key = await deriveBackupKey(passphrase, salt);
   await mkdir(directory, { recursive: false, mode: 0o700 });
@@ -253,7 +259,7 @@ export async function createBackup({ directory, client, tables, passphrase, now 
   const secondObjects = await downloadObjects(client);
   const digestList = entries => entries.map(({ key, size, sha256: hash }) => ({ key, size, sha256: hash })).sort((a, b) => a.key.localeCompare(b.key));
   if (stableStringify(digestList(firstObjects)) !== stableStringify(digestList(secondObjects))) throw Error("El contenido de Storage cambió durante el respaldo.");
-  const manifest = { format, version: 1, createdAt: meta.createdAt, schemaHash, tables: tableManifest, objects };
+  const manifest = { format, version: 1, createdAt: meta.createdAt, schemaHash, tables: tableManifest, objects, ...(tables.some(table => table.name === "notification_delivery_outbox") ? { externalNoticesSchema: true, externalDeliveryWorkerPaused: true } : {}) };
   await writeEncrypted(directory, "manifest.enc", Buffer.from(stableStringify(manifest)), key);
   return { tables: tables.length, rows: Object.values(tableManifest).reduce((sum, table) => sum + table.count, 0), objects: objects.length };
 }
@@ -272,6 +278,7 @@ async function readBackup(directory, passphrase, tables) {
       throw Error(`El manifiesto de public.${table.name} no es válido.`);
     }
   }
+  if (tables.some(table => table.name === "notification_delivery_outbox") && (manifest.externalNoticesSchema !== true || manifest.externalDeliveryWorkerPaused !== true)) throw Error("El respaldo de avisos externos no acredita dispatcher detenido.");
   if (!Array.isArray(manifest.objects)) throw Error("El manifiesto de Storage no tiene el formato esperado.");
   return { key, manifest };
 }
@@ -365,7 +372,8 @@ async function compensate(client, inserted, uploaded, priorProfiles) {
   return failures;
 }
 
-export async function restoreBackup({ directory, client, tables, passphrase, confirmRestore = false }) {
+export async function restoreBackup({ directory, client, tables, passphrase, confirmRestore = false, externalDeliveryWorkerPaused = false }) {
+  if (tables.some(table => table.name === "notification_delivery_outbox") && externalDeliveryWorkerPaused !== true) throw Error("Confirma que el dispatcher de avisos externos está detenido antes de restaurar.");
   if (!confirmRestore) throw Error("La restauración requiere --confirm-restore.");
   const { key, manifest } = await readBackup(directory, passphrase, tables);
   const remoteHash = await getRemoteSchema(client, tables);
@@ -455,17 +463,19 @@ export async function restoreBackup({ directory, client, tables, passphrase, con
 
 export function parseBackupArgs(argv) {
   const [action, directory, ...flags] = argv;
-  if (!["backup", "verify", "restore"].includes(action) || !directory) throw Error("Uso: node scripts/supabase-school-backup.mjs backup|verify|restore <directorio> [--confirm-restore] [--legacy-school-schema solo verify]");
-  if (flags.some(flag => !["--confirm-restore", "--legacy-school-schema"].includes(flag))
+  if (!["backup", "verify", "restore"].includes(action) || !directory) throw Error("Uso: node scripts/supabase-school-backup.mjs backup|verify|restore <directorio> [--confirm-restore] [--legacy-school-schema solo verify] [--external-notices-schema] [--confirm-delivery-worker-paused]");
+  if (flags.some(flag => !["--confirm-restore", "--legacy-school-schema", "--external-notices-schema", "--confirm-delivery-worker-paused"].includes(flag))
     || new Set(flags).size !== flags.length
     || (flags.includes("--confirm-restore") && action !== "restore")
-    || (flags.includes("--legacy-school-schema") && action !== "verify")) throw Error("Opción no válida: el esquema anterior solo admite verificación explícita.");
-  return { action, directory: path.resolve(directory), confirmRestore: flags.includes("--confirm-restore"), legacySchoolSchema: flags.includes("--legacy-school-schema") };
+    || (flags.includes("--legacy-school-schema") && (action !== "verify" || flags.includes("--external-notices-schema")))
+    || (flags.includes("--confirm-delivery-worker-paused") && (!flags.includes("--external-notices-schema") || action === "verify"))
+    || (flags.includes("--external-notices-schema") && action !== "verify" && !flags.includes("--confirm-delivery-worker-paused"))) throw Error("Opciones no válidas: verifica el catálogo elegido y confirma que el dispatcher está pausado para backup/restore de avisos externos.");
+  return { action, directory: path.resolve(directory), confirmRestore: flags.includes("--confirm-restore"), legacySchoolSchema: flags.includes("--legacy-school-schema"), externalNoticesSchema: flags.includes("--external-notices-schema"), externalDeliveryWorkerPaused: flags.includes("--confirm-delivery-worker-paused") };
 }
 
 async function main(argv = process.argv.slice(2), env = process.env) {
   const args = parseBackupArgs(argv);
-  const tables = await loadSchoolBackupTables({ legacySchoolSchema: args.legacySchoolSchema });
+  const tables = await loadSchoolBackupTables({ legacySchoolSchema: args.legacySchoolSchema, externalNoticesSchema: args.externalNoticesSchema });
   const passphrase = env.SCHOOL_BACKUP_PASSPHRASE;
   if (!passphrase) throw Error("Falta configurar SCHOOL_BACKUP_PASSPHRASE en el entorno seguro de operación.");
   if (args.action === "verify") {
@@ -480,10 +490,10 @@ async function main(argv = process.argv.slice(2), env = process.env) {
     const existing = await readdir(args.directory).catch(() => null);
     if (existing?.length) throw Error("El destino del respaldo debe ser una carpeta nueva o vacía.");
     if (existing) await rm(args.directory, { recursive: true });
-    const result = await createBackup({ directory: args.directory, client, tables, passphrase });
+    const result = await createBackup({ directory: args.directory, client, tables, passphrase, externalDeliveryWorkerPaused: args.externalDeliveryWorkerPaused });
     process.stdout.write(`Respaldo Supabase cifrado listo: ${result.rows} filas en ${result.tables} tablas y ${result.objects} objetos.\n`);
   } else {
-    const result = await restoreBackup({ directory: args.directory, client, tables, passphrase, confirmRestore: args.confirmRestore });
+    const result = await restoreBackup({ directory: args.directory, client, tables, passphrase, confirmRestore: args.confirmRestore, externalDeliveryWorkerPaused: args.externalDeliveryWorkerPaused });
     process.stdout.write(`Restauración Supabase verificada: ${result.rows} filas en ${result.tables} tablas y ${result.objects} objetos. ${result.limitation}\n`);
   }
 }

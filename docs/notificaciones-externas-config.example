@@ -1,0 +1,14 @@
+SCHOOL_NOTIFICATION_SETTINGS_ENABLED=disabled
+# schema31-ready only after explicit schema review/installation; allows own revocations while providers stay off.
+SCHOOL_NOTIFICATION_EMAIL_PROVIDER=disabled
+SCHOOL_NOTIFICATION_PUSH_PROVIDER=disabled
+SCHOOL_NOTIFICATION_WORKER_ENABLED=disabled
+# Configure private server values ONLY after school approval and migration/backup review.
+SCHOOL_NOTIFICATION_RESEND_KEY=
+SCHOOL_NOTIFICATION_EMAIL_FROM=
+SCHOOL_NOTIFICATION_VAPID_PUBLIC_KEY=
+SCHOOL_NOTIFICATION_VAPID_PRIVATE_KEY=
+SCHOOL_NOTIFICATION_VAPID_SUBJECT=
+# APP_ORIGIN must be the approved public HTTPS portal origin, no path/query/credentials.
+APP_ORIGIN=https://your-school-portal.example
+# Existing SUPABASE_URL/SUPABASE_SECRET_KEY remain private; never expose them to browsers.

@@ -381,3 +381,34 @@ test("offline verify CLI needs archive key but no Supabase server credentials", 
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /íntegro: 0 filas en 33 tablas/);
 });
+
+test('external notice schema is explicitly 36 tables and keeps 32/33 historical catalog unchanged',async()=>{
+  const schema=await loadSchoolBackupTables({externalNoticesSchema:true});
+  assert.equal(schema.length,36);assert.deepEqual(schema.slice(0,33),await loadSchoolBackupTables());
+  assert.deepEqual(schema.slice(33).map(table=>table.name),['notification_channel_preferences','school_push_subscriptions','notification_delivery_outbox']);
+  assert.deepEqual(schema[33].primaryKey,['user_id','channel']);
+  await assert.rejects(loadSchoolBackupTables({externalNoticesSchema:true,legacySchoolSchema:true}));
+  assert.throws(()=>parseBackupArgs(['backup','/synthetic','--external-notices-schema']));
+  assert.throws(()=>parseBackupArgs(['restore','/synthetic','--external-notices-schema','--confirm-restore']));
+  assert.equal(parseBackupArgs(['backup','/synthetic','--external-notices-schema','--confirm-delivery-worker-paused']).externalNoticesSchema,true);
+});
+test('remote notice schema cannot silently export a partial 33-table snapshot',async()=>{
+  const current=await loadSchoolBackupTables(),external=await loadSchoolBackupTables({externalNoticesSchema:true});
+  const directory=await mkdtemp(path.join(os.tmpdir(),'school-notice-backup-denial-'));await rm(directory,{recursive:true});
+  try{await assert.rejects(createBackup({directory,client:fakeClient({schema:external}),tables:current,passphrase}),/36 tablas/);}finally{await rm(directory,{recursive:true,force:true});}
+});
+test('notice backup requires paused dispatcher and encrypts all 36 tables with state preserved',async()=>{
+  const schema=await loadSchoolBackupTables({externalNoticesSchema:true});
+  const directory=await mkdtemp(path.join(os.tmpdir(),'school-notice-backup-'));await rm(directory,{recursive:true});
+  const job={id:'notice-job',notification_id:'notice-id',user_id:'profile-id',channel:'email',destination_id:'profile-id',subscription_id:null,state:'uncertain',claim_nonce:'nonce',claimed_at:'2026-10-09T00:00:00Z',authorized_at:'2026-10-09T00:00:00Z',finished_at:'2026-10-09T00:01:00Z',result_code:'transport_uncertain',created_at:'2026-10-09T00:00:00Z'};
+  const rowTables={notification_delivery_outbox:[job,{...job,id:'claimed-job',state:'claimed',finished_at:null,result_code:null}]};
+  try{
+    await assert.rejects(createBackup({directory,client:fakeClient({schema}),tables:schema,passphrase}),/dispatcher/);
+    const backup=await createBackup({directory,client:fakeClient({schema,rows:rowTables}),tables:schema,passphrase,externalDeliveryWorkerPaused:true});assert.equal(backup.tables,36);
+    const verified=await verifyBackup({directory,passphrase,tables:schema});assert.equal(verified.tables,36);
+    await assert.rejects(verifyBackup({directory,passphrase,tables:await loadSchoolBackupTables()}),/otra versión/);
+    await assert.rejects(restoreBackup({directory,client:fakeClient({schema}),tables:schema,passphrase,confirmRestore:true}),/dispatcher/);
+    const destination=fakeClient({schema});const restored=await restoreBackup({directory,client:destination,tables:schema,passphrase,confirmRestore:true,externalDeliveryWorkerPaused:true});assert.equal(restored.tables,36);
+    const write=destination.calls.find(call=>call.endpoint==='/rest/v1/notification_delivery_outbox'&&call.method==='POST');assert.deepEqual(JSON.parse(write.body).map(row=>row.state).sort(),['claimed','uncertain']);
+  }finally{await rm(directory,{recursive:true,force:true});}
+});
