@@ -1,7 +1,7 @@
 import { and, eq, isNull } from "drizzle-orm";
 import { getDb } from "@/db";
 import { enrollments, groups, guardians, studentGuardians, students, teacherGroups, teachers, user, userRoles } from "@/db/schema";
-import { getActiveSupabaseSchoolAccount, getSchoolSession } from "@/lib/supabase/session";
+import { getSchoolSession, readVerifiedSupabaseSchoolAccount } from "@/lib/supabase/session";
 import { env } from "@/lib/runtime/env";
 import { createSchoolDatabaseClient } from "@/lib/supabase/database";
 import { createSupabaseSchoolAccess } from "@/lib/supabase/access";
@@ -25,8 +25,8 @@ export async function actorFromRequest(request: Request): Promise<Actor | null> 
   if (env.SCHOOL_DATA_PROVIDER === "supabase") {
     if (!supabaseAuth || supabaseAuth.userId !== session.user.id) return null;
     try {
-      const account = await getActiveSupabaseSchoolAccount({ id: supabaseAuth.userId, email: session.user.email }, supabaseAuth.accessToken);
-      return account ? { id: account.id, name: account.name, email: account.email, roles: account.roles, supabaseAuth } : null;
+      const account = readVerifiedSupabaseSchoolAccount(session);
+      return account && account.id === supabaseAuth.userId ? { id: account.id, name: account.name, email: account.email, roles: [...account.roles], supabaseAuth } : null;
     } catch {
       return null;
     }

@@ -12,6 +12,7 @@
     "hooks/**/*.tsx",
     "lib/**/*.ts",
     "lib/**/*.tsx",
+    "instrumentation.ts",
     "proxy.ts",
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts"

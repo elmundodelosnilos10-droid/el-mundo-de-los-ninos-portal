@@ -8,6 +8,26 @@ import { createSchoolDatabaseClient } from "./database";
 import type { SchoolRole } from "./admin-database";
 
 const schoolRoles = new Set<SchoolRole>(["superadmin", "direccion", "docente", "tutor", "alumno"]);
+type VerifiedSchoolAccount = Readonly<{ id: string; name: string; email: string; roles: readonly SchoolRole[] }>;
+const verifiedSessionAccounts = new WeakMap<object, Readonly<{ account: VerifiedSchoolAccount; accessToken: string }>>();
+
+/** Server-only, object-scoped proof from this invocation of getSchoolSession.
+ * This is not a token/identity cache: a new request must verify Auth and RLS again.
+ * Neither a cloned session nor a modified identity/token can reuse the proof.
+ */
+export function readVerifiedSupabaseSchoolAccount(session: unknown): VerifiedSchoolAccount | null {
+  if (typeof window !== "undefined" || !session || typeof session !== "object") return null;
+  const verified = verifiedSessionAccounts.get(session);
+  if (!verified) return null;
+  try {
+    const candidate = session as { user?: { id?: unknown; name?: unknown; email?: unknown }; session?: { userId?: unknown; supabaseAuthUserId?: unknown; supabaseAccessToken?: unknown } };
+    const context = candidate.session;
+    const account = verified.account;
+    if (candidate.user?.id !== account.id || candidate.user.name !== account.name || candidate.user.email !== account.email ||
+      context?.userId !== account.id || context.supabaseAuthUserId !== account.id || context.supabaseAccessToken !== verified.accessToken) return null;
+    return Object.freeze({ id: account.id, name: account.name, email: account.email, roles: Object.freeze([...account.roles]) });
+  } catch { return null; }
+}
 
 /** Read authorization with the verified identity's JWT; never infer roles from Auth metadata. */
 export async function getActiveSupabaseSchoolAccount(authUser: Pick<AuthUser, "id" | "email">, accessToken: string, fetcher: typeof fetch = fetch) {
@@ -52,10 +72,15 @@ export async function getSchoolSession(headers: Headers) {
     try {
       const account = await getActiveSupabaseSchoolAccount(authUser, stored.accessToken);
       if (!account) return null;
-      return {
+      const session = {
         user: { id: account.id, name: account.name, email: account.email },
         session: { userId: account.id, supabaseAuthUserId: authUser.id, supabaseAccessToken: stored.accessToken },
       };
+      verifiedSessionAccounts.set(session, Object.freeze({
+        account: Object.freeze({ id: account.id, name: account.name, email: account.email, roles: Object.freeze([...account.roles]) }),
+        accessToken: stored.accessToken,
+      }));
+      return session;
     } catch {
       return null;
     }

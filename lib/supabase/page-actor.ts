@@ -1,6 +1,6 @@
 import { env } from "@/lib/runtime/env";
 import { actorFromRequest, type Actor } from "@/lib/access";
-import { getActiveSupabaseSchoolAccount, getSchoolSession } from "./session";
+import { getSchoolSession, readVerifiedSupabaseSchoolAccount } from "./session";
 
 /** Server pages use the same verified identity and authorization as API routes.
  * The JWT stays on the server; pass only display names, roles and authorized
@@ -19,14 +19,12 @@ export async function getSchoolPageActor(requestHeaders: Headers): Promise<Actor
   if (typeof context.supabaseAuthUserId !== "string" || typeof context.supabaseAccessToken !== "string" ||
       context.supabaseAuthUserId !== session.user.id) return null;
   try {
-    const account = await getActiveSupabaseSchoolAccount(
-      { id: context.supabaseAuthUserId, email: session.user.email }, context.supabaseAccessToken,
-    );
+    const account = readVerifiedSupabaseSchoolAccount(session);
     return account ? {
       id: account.id,
       name: account.name,
       email: account.email,
-      roles: account.roles,
+      roles: [...account.roles],
       supabaseAuth: { userId: context.supabaseAuthUserId, accessToken: context.supabaseAccessToken },
     } : null;
   } catch { return null; }

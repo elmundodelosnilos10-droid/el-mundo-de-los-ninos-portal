@@ -10,7 +10,7 @@ import { prepareSchoolAuthLink } from "../lib/supabase/auth-link.ts";
 const authId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const cookie = "__Host-school-access=synthetic-access; __Host-school-refresh=synthetic-refresh";
 
-function harness() {
+function harness({ browserContext = false } = {}) {
   const environment = {
     SCHOOL_AUTH_PROVIDER: "supabase", SCHOOL_DATA_PROVIDER: "supabase",
     SUPABASE_URL: "https://school.example.test", SUPABASE_PUBLISHABLE_KEY: "test-publishable",
@@ -18,25 +18,31 @@ function harness() {
   };
   const authUser = { id: authId, email: "school@example.test", user_metadata: { role: "superadmin" } };
   const authSession = { access_token: "synthetic-access", refresh_token: "synthetic-refresh", expires_in: 3600, token_type: "bearer", user: authUser };
-  const state = { mode: "ok", calls: [], d1Calls: 0, adminCalls: 0 };
+  const state = { mode: "ok", calls: [], d1Calls: 0, adminCalls: 0,
+    accounts: new Map([["synthetic-access", { user: authUser, roles: ["docente"], active: true }]]),
+    beforeResponse: null,
+  };
   const fetcher = async (input, options = {}) => {
     const url = new URL(input);
     state.calls.push({ url, options });
+    const token = options.headers?.Authorization?.replace(/^Bearer /, "");
+    const identity = state.accounts.get(token);
+    if (state.beforeResponse) await state.beforeResponse(url, token);
     if (url.pathname.startsWith("/rest/v1/")) {
-      assert.equal(options.headers.Authorization, "Bearer synthetic-access");
+      assert.ok(identity, "JWT must belong to one of the synthetic identities");
       assert.equal(options.headers.apikey, "test-publishable");
       if (state.mode === "database-down") return Response.json({}, { status: 503 });
       if (url.pathname.endsWith("/profiles")) {
-        assert.equal(url.searchParams.get("id"), `eq.${authId}`);
+        assert.equal(url.searchParams.get("id"), `eq.${identity.user.id}`);
         return Response.json(state.mode === "missing-profile" ? [] : [{
-          id: state.mode === "foreign-profile" ? "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" : authId,
-          email: state.mode === "foreign-email" ? "other@example.test" : authUser.email,
-          name: "Escuela", active: state.mode !== "inactive",
+          id: state.mode === "foreign-profile" ? "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" : identity.user.id,
+          email: state.mode === "foreign-email" ? "other@example.test" : identity.user.email,
+          name: identity.name ?? "Escuela", active: state.mode !== "inactive" && identity.active,
         }]);
       }
       if (url.pathname.endsWith("/user_roles")) {
-        assert.equal(url.searchParams.get("user_id"), `eq.${authId}`);
-        return Response.json(state.mode === "no-roles" ? [] : [{ role: state.mode === "bad-role" ? "hacker" : "docente" }]);
+        assert.equal(url.searchParams.get("user_id"), `eq.${identity.user.id}`);
+        return Response.json(state.mode === "no-roles" ? [] : state.mode === "bad-role" ? [{ role: "hacker" }] : identity.roles.map(role => ({ role })));
       }
       throw new Error(`Unexpected database request ${url.pathname}`);
     }
@@ -44,7 +50,7 @@ function harness() {
       return state.mode === "invalid-password" ? Response.json({}, { status: 400 }) : Response.json(authSession);
     }
     if (url.pathname === "/auth/v1/user") {
-      return state.mode === "expired" ? Response.json({}, { status: 401 }) : Response.json(authUser);
+      return state.mode === "expired" ? Response.json({}, { status: 401 }) : Response.json(identity?.user ?? authUser);
     }
     if (url.pathname === "/auth/v1/logout") return new Response(null, { status: 204 });
     if (url.pathname === "/auth/v1/recover") return new Response(null, { status: state.mode === "recovery-rate-limit" ? 429 : 200 });
@@ -76,6 +82,7 @@ function harness() {
         "@/lib/supabase/session": "lib/supabase/session.ts",
         "@/lib/supabase/database": "lib/supabase/database.ts",
         "@/lib/supabase/access": "lib/supabase/access.ts",
+        "@/lib/access": "lib/access.ts",
       };
       if (!routes[name]) throw new Error(`Unexpected import ${name}`);
       return load(routes[name]);
@@ -83,12 +90,14 @@ function harness() {
     vm.runInContext(source, vm.createContext({
       module: sandboxModule, exports: sandboxModule.exports, require: requireMock, fetch: fetcher,
       URL, Request, Response, Headers, TextEncoder, Set, Map,
+      ...(browserContext ? { window: {} } : {}),
     }), { filename: file });
     return sandboxModule.exports;
   }
   return {
     environment, state, authUser,
-    ...load("lib/supabase/auth-route.ts"), ...load("lib/supabase/session.ts"), ...load("lib/access.ts"),
+    replaceSessionReader(value) { load("lib/supabase/session.ts").getSchoolSession = async () => value; },
+    ...load("lib/supabase/auth-route.ts"), ...load("lib/supabase/session.ts"), ...load("lib/access.ts"), ...load("lib/supabase/page-actor.ts"),
   };
 }
 
@@ -240,5 +249,105 @@ test("change-password verifies an existing 11-character password while requiring
   response = await runtime.handleSupabaseAuthRequest(post("change-password", { currentPassword: "old-pass123", newPassword: "short-pass1" }, true));
   assert.equal(response.status, 400);
   assert.equal(runtime.state.calls.length, 0);
+  noLegacyAccess(runtime);
+});
+
+for (const kind of ["API", "page"]) {
+  test(`${kind} actor makes exactly three REST-client calls with mocked HTTP and rechecks each new invocation`, async () => {
+    const runtime = harness();
+    const headers = new Headers({ cookie });
+    const request = new Request("https://portal.example.test/api/tasks", { headers });
+    const read = () => kind === "API" ? runtime.actorFromRequest(request) : runtime.getSchoolPageActor(headers);
+    let actor = await read();
+    assert.equal(actor.id, authId); assert.equal(actor.roles.join(","), "docente");
+    assert.deepEqual(runtime.state.calls.map(call => call.url.pathname), ["/auth/v1/user", "/rest/v1/profiles", "/rest/v1/user_roles"]);
+    runtime.state.accounts.get("synthetic-access").roles = ["tutor"];
+    actor = await read();
+    assert.equal(actor.roles.join(","), "tutor"); assert.equal(runtime.state.calls.length, 6);
+    runtime.state.accounts.get("synthetic-access").active = false;
+    assert.equal(await read(), null); assert.equal(runtime.state.calls.length, 8);
+    assert.deepEqual(runtime.state.calls.slice(-2).map(call => call.url.pathname), ["/auth/v1/user", "/rest/v1/profiles"]);
+    noLegacyAccess(runtime);
+  });
+}
+
+test("session proof is object-scoped, deeply frozen and copied without an additional HTTP read", async () => {
+  const runtime = harness();
+  const session = await runtime.getSchoolSession(new Headers({ cookie }));
+  const first = runtime.readVerifiedSupabaseSchoolAccount(session);
+  const second = runtime.readVerifiedSupabaseSchoolAccount(session);
+  assert.equal(first.id, authId); assert.equal(first.roles.join(","), "docente");
+  assert.notEqual(first, second); assert.notEqual(first.roles, second.roles);
+  assert.equal(Object.isFrozen(first), true); assert.equal(Object.isFrozen(first.roles), true);
+  assert.throws(() => first.roles.push("superadmin"), cause => cause.name === "TypeError");
+  assert.doesNotMatch(JSON.stringify(first), /synthetic-access|supabaseAccessToken/);
+  runtime.state.accounts.get("synthetic-access").roles[0] = "tutor";
+  assert.equal(runtime.readVerifiedSupabaseSchoolAccount(session).roles.join(","), "docente");
+  assert.equal(runtime.state.calls.length, 3);
+  for (const fake of [null, undefined, 1, "session", {}, { ...session }, structuredClone(session)]) {
+    assert.equal(runtime.readVerifiedSupabaseSchoolAccount(fake), null);
+  }
+  assert.equal(runtime.state.calls.length, 3); noLegacyAccess(runtime);
+});
+
+test("session proof fails closed after any identity or token mutation without consulting a fresh account", async () => {
+  const runtime = harness();
+  const session = await runtime.getSchoolSession(new Headers({ cookie }));
+  for (const [object, key, value] of [
+    [session.user, "id", "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"],
+    [session.user, "name", "Forged name"], [session.user, "email", "forged@example.test"],
+    [session.session, "userId", "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"],
+    [session.session, "supabaseAuthUserId", "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"],
+    [session.session, "supabaseAccessToken", "synthetic-stolen-access"],
+  ]) {
+    const original = object[key]; object[key] = value;
+    assert.equal(runtime.readVerifiedSupabaseSchoolAccount(session), null);
+    runtime.replaceSessionReader(session);
+    assert.equal(await runtime.actorFromRequest(new Request("https://portal.example.test/api/tasks", { headers: { cookie } })), null);
+    assert.equal(await runtime.getSchoolPageActor(new Headers({ cookie })), null);
+    object[key] = original;
+  }
+  assert.equal(runtime.state.calls.length, 3); noLegacyAccess(runtime);
+});
+
+test("actors reject invented or cloned session objects even when their fields match a verified identity", async () => {
+  const runtime = harness();
+  const session = await runtime.getSchoolSession(new Headers({ cookie }));
+  for (const fake of [{ user: { id: authId, name: "Escuela", email: runtime.authUser.email }, session: { userId: authId, supabaseAuthUserId: authId, supabaseAccessToken: "synthetic-access" } }, structuredClone(session)]) {
+    runtime.replaceSessionReader(fake);
+    assert.equal(await runtime.actorFromRequest(new Request("https://portal.example.test/api/tasks", { headers: { cookie } })), null);
+    assert.equal(await runtime.getSchoolPageActor(new Headers({ cookie })), null);
+  }
+  assert.equal(runtime.state.calls.length, 3); noLegacyAccess(runtime);
+});
+
+test("interleaved accounts preserve their exact verified UUID, JWT and current roles without crossing proofs", async () => {
+  const runtime = harness();
+  const otherId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+  runtime.state.accounts.set("synthetic-other-access", { user: { id: otherId, email: "family@example.test", user_metadata: { role: "superadmin" } }, roles: ["tutor"], name: "Familia sintética", active: true });
+  let release;
+  let started;
+  const paused = new Promise(resolve => { started = resolve; });
+  runtime.state.beforeResponse = async (url, token) => {
+    if (url.pathname.endsWith("/profiles") && token === "synthetic-access") {
+      started(); await new Promise(resolve => { release = resolve; });
+    }
+  };
+  const firstPending = runtime.actorFromRequest(new Request("https://portal.example.test/api/tasks", { headers: { cookie } }));
+  await paused;
+  const second = await runtime.getSchoolPageActor(new Headers({ cookie: "__Host-school-access=synthetic-other-access; __Host-school-refresh=synthetic-other-refresh" }));
+  release(); const first = await firstPending;
+  assert.equal(first.id, authId); assert.equal(first.roles.join(","), "docente"); assert.equal(first.supabaseAuth.accessToken, "synthetic-access");
+  assert.equal(second.id, otherId); assert.equal(second.roles.join(","), "tutor"); assert.equal(second.supabaseAuth.accessToken, "synthetic-other-access");
+  assert.equal(runtime.state.calls.length, 6); noLegacyAccess(runtime);
+});
+
+test("verified account reader is unavailable in a browser context even for an exact verified session object", async () => {
+  const runtime = harness({ browserContext: true });
+  const session = await runtime.getSchoolSession(new Headers({ cookie }));
+  assert.ok(session);
+  assert.equal(runtime.readVerifiedSupabaseSchoolAccount(session), null);
+  assert.equal(await runtime.actorFromRequest(new Request("https://portal.example.test/api/tasks", { headers: { cookie } })), null);
+  assert.equal(await runtime.getSchoolPageActor(new Headers({ cookie })), null);
   noLegacyAccess(runtime);
 });

@@ -1,37 +1,64 @@
 import { env } from "@/lib/runtime/env";
 import { createSchoolDatabaseClient, SupabaseDatabaseError } from "@/lib/supabase/database";
-import { and, asc, eq } from "drizzle-orm";
+import { and, desc, eq, isNull, lt, or } from "drizzle-orm";
 import { z } from "zod";
 import { getDb } from "@/db";
-import { auditLog, observations, students } from "@/db/schema";
-import { actorFromRequest, errorResponse, hasRole, maySeeStudent, mayTeachGroup } from "@/lib/access";
+import { auditLog, observations, students, teacherGroups, teachers } from "@/db/schema";
+import { actorFromRequest, errorResponse as accessErrorResponse, hasRole, maySeeStudent, mayTeachGroup } from "@/lib/access";
 import { isSameOriginAuthRequest } from "@/lib/supabase/auth-route-utils";
 import { enrollments } from "@/db/schema";
 import { notifyStudentFamilies } from "@/lib/family-notifications";
+import { isObservationUuid, makeObservationPage, OBSERVATION_PAGE_SIZE, parseObservationCursor, readSupabaseObservationPage } from "@/lib/supabase/observation-page";
 
 const categories = ["lenguaje", "motricidad", "socioemocional", "participacion", "autonomia", "convivencia", "creatividad", "objetivo_aprendizaje"] as const;
 const input = z.object({ category: z.enum(categories), body: z.string().trim().min(2).max(2000), visibleToFamily: z.boolean().default(false) });
+function errorResponse(status: Parameters<typeof accessErrorResponse>[0], message: string) {
+  const response = accessErrorResponse(status, message);
+  response.headers.set("Cache-Control", "no-store");
+  return response;
+}
 
 export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
   const actor = await actorFromRequest(request);
   if (!actor) return errorResponse(401, "Inicia sesión.");
   const { id } = await context.params;
-  if (!(await maySeeStudent(actor, id))) return errorResponse(404, "Alumno no disponible.");
+  if (!isObservationUuid(id)) return errorResponse(404, "Alumno no disponible.");
+  try {
+    if (!(await maySeeStudent(actor, id))) return errorResponse(404, "Alumno no disponible.");
+  } catch { return errorResponse(503, "No se pudo comprobar el acceso al seguimiento escolar."); }
+  const params = new URL(request.url).searchParams;
+  let cursor;
+  try {
+    if (params.getAll("cursor").length > 1) throw new Error("invalid_cursor");
+    cursor = parseObservationCursor(params.get("cursor"), id);
+  } catch { return errorResponse(400, "El cursor del seguimiento no es válido."); }
+  const staff = hasRole(actor, "superadmin", "direccion", "docente");
   if (env.SCHOOL_DATA_PROVIDER === "supabase") {
     if (!actor.supabaseAuth) return errorResponse(503, "La sesión no está vinculada con Supabase. Vuelve a iniciar sesión.");
     try {
-      const result = await createSchoolDatabaseClient(env).select<{ id: string; category: string; body: string; visible_to_family: boolean; recorded_at: string }>(actor.supabaseAuth.accessToken, "observations", {
-        columns: ["id", "category", "body", "visible_to_family", "recorded_at"],
-        filters: [{ column: "student_id", operator: "eq", value: id }],
-        orderBy: [{ column: "recorded_at" }, { column: "id" }], limit: 500,
-      });
-      return Response.json({ items: result.data.map(row => ({ id: row.id, category: row.category, body: row.body, visibleToFamily: row.visible_to_family, recordedAt: row.recorded_at })) }, { headers: { "Cache-Control": "no-store" } });
+      const page = await readSupabaseObservationPage(createSchoolDatabaseClient(env), actor.supabaseAuth.accessToken, id, cursor, staff);
+      return Response.json(page, { headers: { "Cache-Control": "no-store" } });
     } catch { return errorResponse(503, "No se pudo cargar el seguimiento escolar."); }
   }
-  const rows = hasRole(actor, "superadmin", "direccion", "docente")
-    ? await getDb().select().from(observations).where(eq(observations.studentId, id)).orderBy(asc(observations.recordedAt))
-    : await getDb().select({ id: observations.id, studentId: observations.studentId, category: observations.category, body: observations.body, visibleToFamily: observations.visibleToFamily, recordedAt: observations.recordedAt }).from(observations).where(and(eq(observations.studentId, id), eq(observations.visibleToFamily, true))).orderBy(asc(observations.recordedAt));
-  return Response.json({ items: rows }, { headers: { "Cache-Control": "no-store" } });
+  const before = cursor ? new Date(cursor.recordedAt) : null;
+  // The legacy SQLite column stores integer seconds, never PostgreSQL fractions.
+  if (cursor && !cursor.recordedAt.endsWith(".000000Z")) return errorResponse(400, "El cursor del seguimiento no es válido.");
+  try {
+    const db = getDb();
+    let internal = hasRole(actor, "superadmin", "direccion");
+    if (!internal && hasRole(actor, "docente")) {
+      const assignment = await db.select({ teacherId: teacherGroups.teacherId }).from(teacherGroups)
+        .innerJoin(teachers, eq(teachers.id, teacherGroups.teacherId))
+        .innerJoin(enrollments, eq(enrollments.groupId, teacherGroups.groupId))
+        .where(and(eq(teachers.userId, actor.id), eq(teachers.active, true), eq(enrollments.studentId, id), isNull(enrollments.endedAt))).limit(1);
+      internal = assignment.length > 0;
+    }
+    const rows = await db.select({ id: observations.id, category: observations.category, body: observations.body, visibleToFamily: observations.visibleToFamily, recordedAt: observations.recordedAt })
+      .from(observations).where(and(eq(observations.studentId, id), internal ? undefined : eq(observations.visibleToFamily, true),
+        cursor && before ? or(lt(observations.recordedAt, before), and(eq(observations.recordedAt, before), lt(observations.id, cursor.id))) : undefined))
+      .orderBy(desc(observations.recordedAt), desc(observations.id)).limit(OBSERVATION_PAGE_SIZE + 1);
+    return Response.json(makeObservationPage(id, rows.map(row => ({ ...row, recordedAt: row.recordedAt.toISOString() }))), { headers: { "Cache-Control": "no-store" } });
+  } catch { return errorResponse(503, "No se pudo cargar el seguimiento escolar."); }
 }
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
@@ -40,6 +67,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   if (!actor) return errorResponse(401, "Inicia sesión.");
   if (!hasRole(actor, "superadmin", "direccion", "docente")) return errorResponse(403, "No tienes permiso para registrar observaciones.");
   const { id } = await context.params;
+  if (!isObservationUuid(id)) return errorResponse(404, "Alumno no disponible.");
   const parsed = input.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return errorResponse(400, "Revisa la categoría y la observación.");
   if (env.SCHOOL_DATA_PROVIDER === "supabase") {
