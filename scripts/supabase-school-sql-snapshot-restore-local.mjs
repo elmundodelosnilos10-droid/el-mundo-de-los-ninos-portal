@@ -134,6 +134,85 @@ async function sourceMetadata(tx, raw, field) {
 }
 const textRows = rows => rows.map(row => row.row_text);
 
+// Exact v1 shapes, deliberately matching the capture generator. No definitions are executed.
+const metadataQueries = Object.freeze({
+  constraints: "SELECT jsonb_build_object('schema',n.nspname,'table',cl.relname,'name',c.conname,'kind',c.contype,'definition',pg_get_constraintdef(c.oid))::text AS row_text FROM pg_constraint c JOIN pg_class cl ON cl.oid=c.conrelid JOIN pg_namespace n ON n.oid=cl.relnamespace WHERE n.nspname='public' ORDER BY row_text",
+  indexes: "SELECT to_jsonb(i)::text AS row_text FROM pg_indexes i WHERE schemaname='public' ORDER BY row_text",
+  triggers: "SELECT jsonb_build_object('schema',n.nspname,'table',cl.relname,'name',t.tgname,'definition',pg_get_triggerdef(t.oid))::text AS row_text FROM pg_trigger t JOIN pg_class cl ON cl.oid=t.tgrelid JOIN pg_namespace n ON n.oid=cl.relnamespace WHERE n.nspname='public' AND NOT t.tgisinternal ORDER BY row_text",
+  functions: "SELECT jsonb_build_object('name',p.proname,'definition',pg_get_functiondef(p.oid))::text AS row_text FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='public' AND p.prokind='f' ORDER BY row_text",
+  policies: "SELECT to_jsonb(p)::text AS row_text FROM pg_policies p WHERE schemaname='public' ORDER BY row_text",
+  table_acl: "SELECT jsonb_build_object('schema',n.nspname,'table',cl.relname,'owner',pg_get_userbyid(cl.relowner),'acl',ARRAY(SELECT item::text FROM unnest(COALESCE(cl.relacl,acldefault('r',cl.relowner))) item ORDER BY item::text),'rls',cl.relrowsecurity,'force_rls',cl.relforcerowsecurity)::text AS row_text FROM pg_class cl JOIN pg_namespace n ON n.oid=cl.relnamespace WHERE n.nspname='public' AND cl.relkind='r' ORDER BY row_text",
+  enums: "SELECT jsonb_build_object('schema',n.nspname,'type',t.typname,'sort_order',e.enumsortorder,'label',e.enumlabel)::text AS row_text FROM pg_type t JOIN pg_enum e ON e.enumtypid=t.oid JOIN pg_namespace n ON n.oid=t.typnamespace WHERE n.nspname='public' ORDER BY row_text",
+});
+const scopeKey = field => ['indexes','policies'].includes(field) ? 'schemaname' : 'schema';
+function validatePublicMetadataCoverage(parsed, tables) {
+  const publicRows = {};
+  for (const field of Object.keys(metadataQueries)) {
+    const captured = parsed[field];
+    if (field !== 'enums' && (!Array.isArray(captured) || captured.length === 0)) fail(`metadata_capture_missing_${field}`);
+    publicRows[field] = (captured ?? []).filter(row => field === 'functions' || row[scopeKey(field)] === 'public');
+    if (field !== 'enums' && publicRows[field].length === 0) fail(`metadata_public_missing_${field}`);
+  }
+  const tableNames = tables.map(table=>table.name).sort();
+  if (!equal(publicRows.table_acl.map(row=>row.table).sort(),tableNames) || publicRows.table_acl.some(row=>typeof row.owner !== 'string' || !row.owner || (row.acl !== null && typeof row.acl !== 'string') || typeof row.rls !== 'boolean' || typeof row.force_rls !== 'boolean')) fail('metadata_table_acl_coverage');
+  for (const table of tables) {
+    if (!publicRows.constraints.some(row=>row.table === table.name && row.kind === 'p' && typeof row.definition === 'string' && row.definition)) fail('metadata_primary_key_coverage');
+    if (!publicRows.indexes.some(row=>row.tablename === table.name && typeof row.indexdef === 'string' && row.indexdef)) fail('metadata_index_coverage');
+  }
+  if (publicRows.functions.some(row=>typeof row.name !== 'string' || !namePattern.test(row.name) || typeof row.definition !== 'string' || !row.definition)) fail('metadata_function_definition_missing');
+  return publicRows;
+}
+async function scopedSourceMetadata(tx,raw,field,scope) {
+  if (field === 'table_acl' && scope === 'public') {
+    // ACL item order is immaterial. NULL is the PostgreSQL owner/default ACL, not no privileges.
+    return tx.unsafe("SELECT (value || jsonb_build_object('acl',ARRAY(SELECT item::text FROM unnest(COALESCE((value->>'acl')::aclitem[],acldefault('r',r.oid))) item ORDER BY item::text)))::text AS row_text FROM jsonb_array_elements($1::text::jsonb->'table_acl') value LEFT JOIN pg_roles r ON r.rolname=value->>'owner' WHERE value->>'schema'='public' ORDER BY row_text",[raw]);
+  }
+  const condition = field === 'functions' ? '' : ` WHERE value->>'${scopeKey(field)}'='${scope}'`;
+  return tx.unsafe(`SELECT value::text AS row_text FROM jsonb_array_elements(COALESCE(NULLIF($1::text::jsonb->'${field}','null'::jsonb),'[]'::jsonb))${condition} ORDER BY row_text`,[raw]);
+}
+async function capturedMetadataParity(tx,input,tables) {
+  const sourcePublic = validatePublicMetadataCoverage(input.parsed,tables);
+  const components = {};
+  for (const [field,query] of Object.entries(metadataQueries)) {
+    const expected = await scopedSourceMetadata(tx,input.raw,field,'public');
+    const target = await tx.unsafe(query);
+    if (!equal(textRows(expected),textRows(target))) fail(`metadata_public_mismatch_${field}`);
+    components[field] = { count:expected.length, parity:'matching', sourceCapture: input.parsed[field] === null ? 'declared_null_empty' : sourcePublic[field].length === 0 ? 'declared_empty_public_scope' : 'present' };
+  }
+  // Managed Storage differences are reported separately, never "fixed" by broadening permissions.
+  const managedStorage = {};
+  for (const field of ['triggers','policies','table_acl']) {
+    const expected = await scopedSourceMetadata(tx,input.raw,field,'storage');
+    let query = metadataQueries[field].replace(/'public'/g,"'storage'");
+    if (field === 'table_acl') query = "SELECT jsonb_build_object('schema',n.nspname,'table',cl.relname,'owner',pg_get_userbyid(cl.relowner),'acl',cl.relacl::text,'rls',cl.relrowsecurity,'force_rls',cl.relforcerowsecurity)::text AS row_text FROM pg_class cl JOIN pg_namespace n ON n.oid=cl.relnamespace WHERE n.nspname='storage' AND cl.relkind='r' ORDER BY row_text";
+    const target = await tx.unsafe(query);
+    managedStorage[field] = {sourceCount:expected.length,targetCount:target.length,parity: input.parsed[field] === null ? 'not_captured' : equal(textRows(expected),textRows(target)) ? 'matching' : 'different'};
+  }
+  return { scope:'public-captured-v1', components, publicCapturedMetadataVerified:true, managedStorage:{scope:'captured-definitions-policies-table-acl-only',components:managedStorage,permissionChangesPerformed:false,managedServiceEquivalenceVerified:false}, uncaptured:['function_acl','event_trigger_registrations','trigger_enabled_state','managed_service_configuration'], managedAuthMetadataVerified:false, realtimeServiceMetadataVerified:false };
+}
+
+/** Read-only preflight also accepts an already occupied preserved local recovery target.
+ * It never imports data, executes captured DDL, advances sequences, or expands grants.
+ */
+export async function preflightSchoolSnapshotMetadata({snapshot,rawSnapshotJsonText,sql,tables}) {
+  sqlLocalOptions(sql);
+  if (!authorizedSql.has(sql)) fail('official_native_target_authorization_required');
+  const input = snapshotInput(snapshot,rawSnapshotJsonText,tables);
+  try {
+    return await sql.begin(async tx=>{
+      await tx.unsafe('SET TRANSACTION READ ONLY');
+      await tx.unsafe('SET LOCAL search_path = public');
+      await tx.unsafe("SET LOCAL statement_timeout = '60s'");
+      return capturedMetadataParity(tx,input,tables);
+    });
+  } catch(error) {
+    const failure = error instanceof RestoreError ? error : new RestoreError('metadata_preflight_failed');
+    failure.phase = 'captured_metadata_preflight';
+    if (!(error instanceof RestoreError) && typeof error?.code === 'string' && /^[0-9A-Z]{5}$/.test(error.code)) failure.sqlState = error.code;
+    throw failure;
+  }
+}
+
 /** Only a database returned by openSchoolSnapshotLocalDatabase is accepted.
  * Any failure rolls back inserts and sequence RESTART; schemas and grants are never created here.
  */
@@ -166,6 +245,8 @@ export async function restoreSchoolSnapshotRows({ snapshot, rawSnapshotJsonText,
       const generated = await tx.unsafe("SELECT table_schema,table_name,column_name FROM information_schema.columns WHERE table_schema IN ('public','auth') AND (is_generated='ALWAYS' OR identity_generation='ALWAYS')");
       const unsafeTriggers = await tx.unsafe("SELECT 1 FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname IN ('public','auth') AND NOT t.tgisinternal AND t.tgenabled IN ('A','R') LIMIT 1");
       if (unsafeTriggers.length) fail('replica_or_always_trigger_not_supported');
+      phase = 'captured_metadata_preflight';
+      const metadataParity = await capturedMetadataParity(tx,input,tables);
       phase = 'target_storage';
       const [objectCount] = await tx.unsafe("SELECT count(*)::text AS object_count FROM storage.objects WHERE bucket_id='school-files'");
       const buckets = await tx.unsafe("SELECT id,name,public FROM storage.buckets WHERE id='school-files'");
@@ -245,7 +326,7 @@ export async function restoreSchoolSnapshotRows({ snapshot, rawSnapshotJsonText,
         if (!equal(textRows(await targetRows(tx,schema,name)),textRows(expected))) fail('restored_rows_mismatch');
       }
       phase = 'transaction_commit';
-      return { status:'ROWS_VERIFIED', publicTables:33, authTables:27, authUsers:1, students:0, objects:0, insertedRows:pending.reduce((sum,table)=>sum+table.rows.length,0), transactionCommitted:true, sequenceCount:sequenceRows.length, advancedSequences, exactIsCalledRestored:false, conservativeSequenceAdvance:advancedSequences>0, loginVerified:false, restoreAcceptanceComplete:false };
+      return { status:'ROWS_VERIFIED', metadataParity, publicTables:33, authTables:27, authUsers:1, students:0, objects:0, insertedRows:pending.reduce((sum,table)=>sum+table.rows.length,0), transactionCommitted:true, sequenceCount:sequenceRows.length, advancedSequences, exactIsCalledRestored:false, conservativeSequenceAdvance:advancedSequences>0, loginVerified:false, restoreAcceptanceComplete:false };
     });
   } catch (error) {
     const failure = error instanceof RestoreError ? error : new RestoreError('restore_transaction_failed');
