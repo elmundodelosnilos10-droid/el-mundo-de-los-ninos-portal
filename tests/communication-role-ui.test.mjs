@@ -206,7 +206,7 @@ test("chat disabled attachments reject programmatic file submission without a PO
   assert.equal(fake.state.calls.length, before); assert.equal(elements(fake.render(), "p").find(p => p.props.role === "alert").props.children, SCHOOL_UPLOAD_UNAVAILABLE_MESSAGE);
   payload.delete("file"); const send = elements(fake.render(), "form")[0].props.onSubmit({ preventDefault() {}, currentTarget: form });
   assert.equal(fake.state.calls[3].options.method, "POST"); assert.equal(fake.state.calls[3].options.body.get("file"), null);
-  await fake.respond(3, { id: "message-synthetic" }, 201); await send; assert.match(text(fake.render()), /Mensaje enviado/); fake.cleanup();
+  await fake.respond(3, { id: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee" }, 201); await send; assert.match(text(fake.render()), /Mensaje enviado/); fake.cleanup();
   await fake.respond(4, { items: [] });
 });
 
