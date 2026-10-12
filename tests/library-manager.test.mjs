@@ -15,12 +15,14 @@ function harness({ uploadsReady = false } = {}) {
     useRef: initial => { const index = state.cursor++; return state.hooks[index] ??= { current: initial }; },
     useEffect: (effect, deps) => { const index = state.cursor++; const previous = state.hooks[index]; if (!previous || deps.some((dep, i) => dep !== previous.deps[i])) { previous?.cleanup?.(); const current = { deps }; state.hooks[index] = current; state.pending.push(() => { current.cleanup = effect(); }); } },
   };
+  hooks.useLayoutEffect = hooks.useEffect;
   const jsx = (type, props) => ({ type, props });
   const dependencies = { react: hooks, "react/jsx-runtime": { jsx, jsxs: jsx, Fragment: "Fragment" }, "@/lib/library-query": { libraryListUrl, libraryPreviewKind }, "@/lib/school-upload-limits": uploadLimits,
     "./library-preview": { LibraryPreview: "LibraryPreview" }, "./library.module.css": { default: {}, __esModule: true } };
   const sandboxModule = { exports: {} };
   const source = ts.transpileModule(fs.readFileSync(new URL("../app/biblioteca/library-manager.tsx", import.meta.url), "utf8"), { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX } }).outputText;
   vm.runInContext(source, vm.createContext({ module: sandboxModule, exports: sandboxModule.exports, require: name => { if (!dependencies[name]) throw new Error(`Unexpected dependency ${name}`); return dependencies[name]; }, AbortController, Error, File, FormData: class extends FormData { constructor(form) { super(); for (const [key, value] of Object.entries(form?.fields ?? {})) this.set(key, value); } },
+    AbortSignal,
     fetch: (url, options) => new Promise((resolve, reject) => state.loads.push({ url, options, resolve, reject })) }), { filename: "app/biblioteca/library-manager.tsx" });
   function render() { state.cursor = 0; return sandboxModule.exports.LibraryManager({ groups: [group], canUpload: true, uploadsReady }); }
   return { state, render, runEffects: () => state.pending.splice(0).forEach(effect => effect()) };
@@ -79,15 +81,17 @@ test("actual library UI discards cancelled results and exposes server failure as
 test("library actual upload/replacement handlers preflight 4 MiB and guard disabled scanner without POST", async () => {
   const file = new File([new Uint8Array(uploadLimits.SCHOOL_UPLOAD_MAX_FILE_BYTES + 1)], "too-large.pdf", { type: "application/pdf" });
   const ready = harness({ uploadsReady: true }); let tree = ready.render();
-  await elements(tree, "form").find(form => form.props.className === "school-form event-form").props.onSubmit({ preventDefault() {}, currentTarget: { fields: { file } } });
-  assert.equal(ready.state.loads.length, 0);
-  assert.match(JSON.stringify(ready.render()), /hasta 4 MB/);
   ready.runEffects(); await answer(ready.state.loads[0]); tree = ready.render();
+  await elements(tree, "form").find(form => form.props.className === "school-form event-form").props.onSubmit({ preventDefault() {}, currentTarget: { fields: { file } } });
+  assert.equal(ready.state.loads.length, 1);
+  assert.match(JSON.stringify(ready.render()), /hasta 4 MB/);
+  tree = ready.render();
   elements(tree, "button").find(button => button.props.children === "Reemplazar archivo").props.onClick();
   elements(tree, "input").find(input => input.props.hidden).props.onChange({ currentTarget: { files: [file], value: "x" } });
   assert.equal(ready.state.loads.length, 1); assert.match(JSON.stringify(ready.render()), /hasta 4 MB/);
   const disabled = harness(); tree = disabled.render();
+  disabled.runEffects();
   await elements(tree, "form").find(form => form.props.className === "school-form event-form").props.onSubmit({ preventDefault() {}, currentTarget: {} });
-  assert.equal(disabled.state.loads.length, 0); assert.match(JSON.stringify(disabled.render()), /pendiente de habilitación/);
+  assert.equal(disabled.state.loads.length, 1); assert.match(JSON.stringify(disabled.render()), /pendiente de habilitación/);
   assert.equal(elements(tree, "input").find(input => input.props.hidden).props.disabled, true);
 });
