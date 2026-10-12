@@ -17,6 +17,7 @@ class ChatPollError extends Error {
   constructor(message: string, readonly terminal: boolean) { super(message); }
 }
 
+const validReceiptId = (id: unknown): id is string => typeof id === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id);
 const CHAT_ACCESS_MESSAGE = "No se pudo verificar tu acceso al chat. Vuelve a cargar la página o inicia sesión de nuevo.";
 function chatRequestSignal(signal?: AbortSignal) {
   const deadline = AbortSignal.timeout(20_000);
@@ -49,6 +50,9 @@ export function MessagingPanel({ contacts, canMessage, communicationHours, uploa
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [connectionState, setConnectionState] = useState<ChatConnectionState>("idle");
   const [accessDenied, setAccessDenied] = useState(false);
+  const mounted = useRef(false);
+  const mutationPending = useRef(false);
+  const [starting, setStarting] = useState(false);
   const accessBlocked = useRef(false);
   const accessRevision = useRef(0);
   const latestActive = useRef("");
@@ -60,6 +64,20 @@ export function MessagingPanel({ contacts, canMessage, communicationHours, uploa
   const requestListRefresh = useRef<(() => void) | null>(null);
   const requestActiveRefresh = useRef<{ conversationId: string; refresh: () => void } | null>(null);
 
+  const cancelLifecycle = useCallback(() => { mounted.current = false; accessRevision.current++; }, []);
+  useEffect(() => { mounted.current = true; return cancelLifecycle; }, [cancelLifecycle]);
+  useEffect(() => {
+    if (canMessage) return;
+    accessRevision.current++; latestActive.current = "";
+    olderRequest.current?.abort(); olderRequest.current = null;
+    cancelListRequest.current?.(); cancelActiveRequest.current?.();
+    loadedOlderPages.current = false;
+    // Permission withdrawal must erase cached private data before it can be shown again.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setList([]); setMessages([]); setActive(""); setHasOlder(false); setLoadingOlder(false);
+    setNotice(""); setError(""); setConnectionState("idle");
+  }, [canMessage]);
+
   const clearChatAccess = useCallback(() => {
     accessBlocked.current = true; accessRevision.current++;
     latestActive.current = ""; olderRequest.current?.abort(); olderRequest.current = null;
@@ -67,6 +85,15 @@ export function MessagingPanel({ contacts, canMessage, communicationHours, uploa
     loadedOlderPages.current = false;
     setList([]); setMessages([]); setActive(""); setHasOlder(false); setLoadingOlder(false); setSending(false);
     setNotice(""); setError(CHAT_ACCESS_MESSAGE); setConnectionState("error"); setAccessDenied(true);
+  }, []);
+
+  const clearConversation = useCallback((id: string) => {
+    if (latestActive.current !== id) return;
+    latestActive.current = ""; olderRequest.current?.abort(); olderRequest.current = null;
+    cancelActiveRequest.current?.(); loadedOlderPages.current = false;
+    setMessages([]); setActive(""); setHasOlder(false); setLoadingOlder(false);
+    setList(current => current.filter(conversation => conversation.id !== id));
+    setNotice(""); setError("La conversación ya no está disponible. Actualiza las conversaciones o consulta con la escuela."); setConnectionState("error");
   }, []);
 
   const refreshList = useCallback(async () => {
@@ -93,11 +120,12 @@ export function MessagingPanel({ contacts, canMessage, communicationHours, uploa
     });
     if (signal?.aborted || latestActive.current !== id || accessRevision.current !== revision) throw new DOMException("Chat changed", "AbortError");
     if ([401, 403].includes(response.status)) { clearChatAccess(); throw new ChatPollError(CHAT_ACCESS_MESSAGE, true); }
+    if (response.status === 404) { clearConversation(id); throw new ChatPollError("Conversación no disponible.", true); }
     const result = await response.json() as { error?: string; readAt?: string };
     if (signal?.aborted || latestActive.current !== id || accessRevision.current !== revision) throw new DOMException("Chat changed", "AbortError");
-    if (!response.ok || !result.readAt) throw Error(result.error || "No se pudo registrar la lectura del chat.");
+    if (response.status !== 200 || typeof result.readAt !== "string" || !Number.isFinite(Date.parse(result.readAt))) throw Error("No se pudo registrar la lectura del chat.");
     return { ...page, items: (page.items ?? []).map(message => !message.isMine && !message.readAt && compareMessageOrder(message.order, throughOrder) <= 0 ? { ...message, readAt: result.readAt! } : message) };
-  }, [canMessage, clearChatAccess]);
+  }, [canMessage, clearChatAccess, clearConversation]);
 
   useEffect(() => {
     if (!canMessage) return;
@@ -173,6 +201,7 @@ export function MessagingPanel({ contacts, canMessage, communicationHours, uploa
       const response = await fetch(url, { cache: "no-store", signal: chatRequestSignal(signal) });
       if (signal.aborted || accessBlocked.current || latestActive.current !== active) throw new DOMException("Chat changed", "AbortError");
       if ([401, 403].includes(response.status)) { clearChatAccess(); throw new ChatPollError(CHAT_ACCESS_MESSAGE, true); }
+      if (response.status === 404) { clearConversation(active); throw new ChatPollError("Conversación no disponible.", true); }
       const data = await response.json() as T & { error?: string };
       if (!response.ok) throw new ChatPollError(data.error || "No se pudo actualizar el chat.", [401, 403, 404].includes(response.status));
       return data;
@@ -277,7 +306,7 @@ export function MessagingPanel({ contacts, canMessage, communicationHours, uploa
       window.removeEventListener("online", onOnline);
       window.removeEventListener("offline", onOffline);
     };
-  }, [active, canMessage, markPageRead, refreshList, clearChatAccess]);
+  }, [active, canMessage, markPageRead, refreshList, clearChatAccess, clearConversation]);
 
   useEffect(() => {
     if (!canMessage) return;
@@ -322,6 +351,7 @@ export function MessagingPanel({ contacts, canMessage, communicationHours, uploa
       const response = await fetch(`/api/conversations/${conversationId}/messages?${params}`, { cache: "no-store", signal: chatRequestSignal(controller.signal) });
       if (!current()) return;
       if ([401, 403].includes(response.status)) { clearChatAccess(); return; }
+      if (response.status === 404) { clearConversation(conversationId); return; }
       let data = await response.json() as MessagePage;
       if (!current()) return;
       if (!response.ok) throw Error(data.error || "No se cargó el historial anterior.");
@@ -338,38 +368,48 @@ export function MessagingPanel({ contacts, canMessage, communicationHours, uploa
   }
 
   function openConversation(id: string) {
-    if (!canMessage || accessBlocked.current || id === active) return;
+    if (!canMessage || accessBlocked.current || mutationPending.current || id === active) return;
     latestActive.current = id; olderRequest.current?.abort(); olderRequest.current = null; setLoadingOlder(false);
     setMessages([]);
     setHasOlder(false);
     setError("");
+    setNotice("");
     setConnectionState("connecting");
     loadedOlderPages.current = false;
     setActive(id);
   }
 
   async function start(contact: Contact) {
-    if (!canMessage || accessBlocked.current) return;
+    if (!canMessage || !mounted.current || accessBlocked.current || mutationPending.current) return;
+    mutationPending.current = true;
     const revision = accessRevision.current;
-    setError(""); setNotice("");
+    const current = () => mounted.current && !accessBlocked.current && revision === accessRevision.current;
+    setStarting(true); setError(""); setNotice("");
     try {
-      const response = await fetch("/api/conversations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ studentId: contact.studentId, teacherId: contact.teacherId, guardianId: contact.guardianId }) });
-      if (accessBlocked.current || revision !== accessRevision.current) return;
+      const response = await fetch("/api/conversations", { method: "POST", credentials: "same-origin", signal: chatRequestSignal(), headers: { "Content-Type": "application/json" }, body: JSON.stringify({ studentId: contact.studentId, teacherId: contact.teacherId, guardianId: contact.guardianId }) });
+      if (!current()) return;
       if ([401, 403].includes(response.status)) { clearChatAccess(); return; }
       const data = await response.json() as { id?: string; error?: string };
-      if (!response.ok || !data.id) throw Error(data.error || "No se pudo iniciar el chat.");
-      await refreshList();
-      if (accessBlocked.current || revision !== accessRevision.current) return;
+      if (!current()) return;
+      if (![200, 201].includes(response.status) || !validReceiptId(data.id)) throw Error("No pudimos confirmar el chat. Actualiza las conversaciones antes de volver a intentarlo.");
       latestActive.current = data.id; olderRequest.current?.abort(); olderRequest.current = null; setLoadingOlder(false);
       setMessages([]); setHasOlder(false); loadedOlderPages.current = false; setConnectionState("connecting"); setActive(data.id);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "No se pudo iniciar el chat. Revisa la conexión e inténtalo de nuevo.");
+      setNotice("Conversación lista.");
+      try { await refreshList(); }
+      catch { if (current()) setError("El chat está confirmado, pero no se pudo actualizar la lista. Pulsa Actualizar conversaciones."); }
+    } catch {
+      if (current()) setError("No pudimos confirmar el chat. Actualiza las conversaciones antes de volver a intentarlo.");
+    } finally {
+      mutationPending.current = false;
+      if (mounted.current) setStarting(false);
     }
   }
 
   async function send(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); if (!canMessage || accessBlocked.current || !active || latestActive.current !== active) return;
+    event.preventDefault(); if (!canMessage || !mounted.current || accessBlocked.current || mutationPending.current || !active || latestActive.current !== active) return;
     const revision = accessRevision.current;
+    const conversationId = active;
+    const current = () => mounted.current && !accessBlocked.current && revision === accessRevision.current && latestActive.current === conversationId;
     const form = event.currentTarget;
     const payload = new FormData(form);
     const file = payload.get("file");
@@ -377,16 +417,29 @@ export function MessagingPanel({ contacts, canMessage, communicationHours, uploa
     if (fileSelected && file.size > SCHOOL_UPLOAD_MAX_FILE_BYTES) { setError(SCHOOL_UPLOAD_SIZE_MESSAGE); setNotice(""); return; }
     if (fileSelected && !uploadsReady) { setError(SCHOOL_UPLOAD_UNAVAILABLE_MESSAGE); setNotice(""); return; }
     if (!String(payload.get("body") ?? "").trim() && !fileSelected) { setError("Escribe un mensaje o selecciona un archivo."); return; }
+    mutationPending.current = true;
     setError(""); setNotice(""); setSending(true);
     try {
-      const response = await fetch(`/api/conversations/${active}/messages`, { method: "POST", body: payload });
-      if (accessBlocked.current || revision !== accessRevision.current) return;
+      const response = await fetch(`/api/conversations/${conversationId}/messages`, { method: "POST", credentials: "same-origin", signal: chatRequestSignal(), body: payload });
+      if (!current()) return;
       if ([401, 403].includes(response.status)) { clearChatAccess(); return; }
-      const result = await readSchoolUploadResponse(response) as { error?: unknown } | null;
-      if (!response.ok) throw Error(typeof result?.error === "string" ? result.error : "No se envió el mensaje.");
-      form.reset(); await refreshMessages(active); setNotice("Mensaje enviado.");
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "Error de conexión."); }
-    finally { setSending(false); }
+      if (response.status === 404) { clearConversation(conversationId); return; }
+      if (response.status === 413) { setError(SCHOOL_UPLOAD_SIZE_MESSAGE); return; }
+      const result = await readSchoolUploadResponse(response) as { id?: unknown; error?: unknown } | null;
+      if (!current()) return;
+      if (response.status !== 201 || !validReceiptId(result?.id)) {
+        const rejected = !response.ok && typeof result?.error === "string" ? result.error : "";
+        setError(rejected ? `${rejected} No se confirmó el envío; consulta el chat antes de volver a enviarlo.` : "No pudimos confirmar el envío. Puede haberse guardado. Consulta el chat antes de volver a enviarlo."); return;
+      }
+      form.reset(); setNotice("Mensaje enviado.");
+      try { await refreshMessages(conversationId); }
+      catch { if (current()) setError("El mensaje está enviado, pero no se pudo actualizar el chat. Actualiza las conversaciones para consultarlo."); }
+    } catch {
+      if (current()) setError("No pudimos confirmar el envío. Puede haberse guardado. Consulta el chat antes de volver a enviarlo.");
+    } finally {
+      mutationPending.current = false;
+      if (mounted.current) setSending(false);
+    }
   }
 
   const chosen = list.find(conversation => conversation.id === active);
@@ -404,14 +457,15 @@ export function MessagingPanel({ contacts, canMessage, communicationHours, uploa
     <p className="auth-help" role="status">{hoursNotice}</p>
     <p className="auth-help" role="status">{realtimeStatus === "connected" ? "Conexión del chat en vivo activa; los cambios se verifican con la escuela. También se revisa el chat abierto cada 10 segundos." : realtimeStatus === "connecting" ? "Conectando las actualizaciones del chat en vivo. Las consultas periódicas siguen activas." : realtimeStatus === "reconnecting" ? "Reconectando las actualizaciones en vivo. El chat abierto sigue usando consultas periódicas." : realtimeStatus === "unauthorized" ? "La conexión en vivo no tiene acceso a la sesión. Revisa tu inicio de sesión." : "El chat abierto se actualiza por consultas periódicas cada 10 segundos."}</p>
     <section className="portal-panel"><h2>Conversaciones</h2>
-      {canMessage && contacts.length > 0 && <div className="contact-list"><strong>Iniciar conversación</strong>{contacts.map((contact, index) => <button className="secondary-button" key={`${contact.studentId}-${contact.guardianId || "self"}-${index}`} onClick={() => start(contact)}>{contact.studentName} · {contact.teacherName}{contact.guardianName ? ` · Familia: ${contact.guardianName}` : ""}</button>)}</div>}
-      {list.length ? <ul className="record-list">{list.map(conversation => <li key={conversation.id}><div><strong>{conversation.studentName} {conversation.studentFamilyName}</strong><span>{conversation.teacherName || conversation.guardianName}{conversation.unreadCount ? ` · ${conversation.unreadCount} sin leer` : ""}</span></div><button className="secondary-button" onClick={() => openConversation(conversation.id)}>Abrir chat{conversation.unreadCount ? ` · ${conversation.unreadCount}` : ""}</button></li>)}</ul> : <p>{contacts.length ? "Aún no hay conversaciones. Elige un contacto autorizado para iniciar una." : "Aún no tienes contactos disponibles para el chat. Pide a la escuela que revise la vinculación de tu cuenta con los alumnos y sus docentes o familias."}</p>}
+      <button type="button" className="secondary-button" disabled={starting || sending} onClick={() => { setError(""); void refreshList().catch(() => { if (mounted.current && !accessBlocked.current) setError("No se cargaron las conversaciones. Revisa la conexión e inténtalo de nuevo."); }); }}>Actualizar conversaciones</button>
+      {canMessage && contacts.length > 0 && <div className="contact-list"><strong>Iniciar conversación</strong>{contacts.map((contact, index) => <button className="secondary-button" key={`${contact.studentId}-${contact.guardianId || "self"}-${index}`} disabled={starting || sending} onClick={() => start(contact)}>{contact.studentName} · {contact.teacherName}{contact.guardianName ? ` · Familia: ${contact.guardianName}` : ""}</button>)}</div>}
+      {list.length ? <ul className="record-list">{list.map(conversation => <li key={conversation.id}><div><strong>{conversation.studentName} {conversation.studentFamilyName}</strong><span>{conversation.teacherName || conversation.guardianName}{conversation.unreadCount ? ` · ${conversation.unreadCount} sin leer` : ""}</span></div><button className="secondary-button" disabled={starting || sending} onClick={() => openConversation(conversation.id)}>Abrir chat{conversation.unreadCount ? ` · ${conversation.unreadCount}` : ""}</button></li>)}</ul> : <p>{contacts.length ? "Aún no hay conversaciones. Elige un contacto autorizado para iniciar una." : "Aún no tienes contactos disponibles para el chat. Pide a la escuela que revise la vinculación de tu cuenta con los alumnos y sus docentes o familias."}</p>}
     </section>
     {chosen && <section className="portal-panel"><h2>Chat · {chosen.studentName} {chosen.studentFamilyName}</h2>
       <p className="auth-help" role="status" aria-live="polite">{connectionState === "connecting" ? "Conectando al chat…" : connectionState === "connected" ? "Chat sincronizado. Se revisan mensajes nuevos cada 10 segundos." : connectionState === "reconnecting" ? "No se pudo actualizar el chat. Reintentaremos automáticamente cuando vuelva la conexión." : connectionState === "error" ? "La conversación ya no está disponible. Actualiza la página o inicia sesión de nuevo." : ""}</p>
       {hasOlder && <button className="secondary-button" type="button" onClick={loadOlderMessages} disabled={loadingOlder}>{loadingOlder ? "Cargando historial…" : "Cargar mensajes anteriores"}</button>}
       <div className="message-history" aria-live="polite">{messages.length ? messages.map(message => <article key={message.id}><strong>{message.authorName}</strong><small>{new Date(message.sentAt).toLocaleString("es-MX")}{message.isMine ? (message.readAt ? " · Leído" : " · Enviado") : ""}</small>{message.body && <p>{message.body}</p>}{message.file && <p><a href={message.file.url}>{message.file.name} · Descargar</a></p>}</article>) : <p>Escribe el primer mensaje.</p>}</div>
-      <form className="school-form" onSubmit={send}><label htmlFor="chat-body">Mensaje (opcional si adjuntas un archivo)</label><textarea id="chat-body" name="body" maxLength={3000} /><label htmlFor="chat-file">Adjuntar PDF o imagen · máximo {SCHOOL_UPLOAD_LIMIT_LABEL}</label><input id="chat-file" name="file" type="file" disabled={!uploadsReady} accept="application/pdf,image/jpeg,image/png,image/webp" />{!uploadsReady && <p className="auth-help" role="status">{SCHOOL_UPLOAD_UNAVAILABLE_MESSAGE} Puedes enviar mensajes de texto.</p>}<button disabled={sending}>{sending ? "Enviando…" : "Enviar mensaje"}</button></form>
+      <form key={active} className="school-form" onSubmit={send}><label htmlFor="chat-body">Mensaje (opcional si adjuntas un archivo)</label><textarea id="chat-body" name="body" disabled={starting || sending} maxLength={3000} /><label htmlFor="chat-file">Adjuntar PDF o imagen · máximo {SCHOOL_UPLOAD_LIMIT_LABEL}</label><input id="chat-file" name="file" type="file" disabled={!uploadsReady || starting || sending} accept="application/pdf,image/jpeg,image/png,image/webp" />{!uploadsReady && <p className="auth-help" role="status">{SCHOOL_UPLOAD_UNAVAILABLE_MESSAGE} Puedes enviar mensajes de texto.</p>}<button disabled={starting || sending}>{sending ? "Enviando…" : "Enviar mensaje"}</button></form>
     </section>}
     {error && <p className="form-error" role="alert">{error}</p>}{notice && <p className="form-success" role="status">{notice}</p>}
   </>;
