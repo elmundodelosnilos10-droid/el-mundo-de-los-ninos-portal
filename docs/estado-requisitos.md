@@ -1,8 +1,8 @@
 # Estado de requisitos — El Mundo de los Niños
 
-**Actualizado: 9 de octubre de 2026.** Hosting real: Vercel/Next.js. Backend: Supabase Auth, PostgreSQL/RLS y Storage privado. Sites/D1 se conserva como destino anterior; no es la base seleccionada del hosting Vercel.
+**Actualizado: 12 de octubre de 2026.** Hosting real: Vercel/Next.js. Backend: Supabase Auth, PostgreSQL/RLS y Storage privado. Sites/D1 se conserva como destino anterior; no es la base seleccionada del hosting Vercel.
 
-**Decisión vigente:** conservar Vercel en el equipo **pandito**, por petición del usuario; el traslado se canceló y no es un pendiente de lanzamiento. La aplicación está publicada en [el dominio habitual](https://el-mundo-de-los-ninos-portal.vercel.app), versión READY `dpl_GkrfgLksCHvPNtgHj2m23k2BMYQn`. La fuente auditada de este release está registrada en el [repositorio GitHub privado escolar](https://github.com/elmundodelosnilos10-droid/el-mundo-de-los-ninos-portal), commit `16368140cb25d385d5a033e62de2952ef0051347`, con 550 blobs verificados. La documentación del resultado puede tener commits posteriores, sin modificar el código publicado.
+**Decisión vigente:** conservar Vercel en el equipo **pandito**, por petición del usuario; el traslado se canceló y no es un pendiente de lanzamiento. La aplicación está publicada en [el dominio habitual](https://el-mundo-de-los-ninos-portal.vercel.app), versión READY `dpl_4ypVWKZNdKaU3CrgyqVxC5oLGznx`. La fuente auditada de este release está registrada en el [repositorio GitHub privado escolar](https://github.com/elmundodelosnilos10-droid/el-mundo-de-los-ninos-portal), commit `f749534b82cd62fd529ea2986e8ba6a2dfdd5019`, con 553 blobs verificados. La documentación del resultado puede tener commits posteriores, sin modificar el código publicado.
 
 Este registro distingue código, ensayos locales reales y verificaciones del proyecto escolar publicado. Ninguna cuenta `example.test` ni un ensayo local acredita una operación de producción.
 
@@ -12,7 +12,17 @@ Este registro distingue código, ensayos locales reales y verificaciones del pro
 
 Publicadas en el release anterior y conservadas: pantallas de error/carga/404 con identidad escolar, registro mínimo y acotado de categorías de error, verificación de acceso sin lecturas duplicadas (5→3 por invocación autorizada) e historial de seguimiento de 25 registros con «Cargar anteriores», cursores por alumno, cancelación y bloqueo de doble envío. No requieren SQL ni proveedores nuevos. Ver [errores](errores-y-operacion.md), [registro mínimo](monitoreo-errores.md), [acceso](rendimiento-acceso.md) y [seguimiento](seguimiento-paginado.md). La integración pasó 656 pruebas, lint sin avisos, TypeScript y ambas compilaciones (`outputs/release-validation-readiness3-20261009.json`). El fixture aislado pasó 23 comprobaciones HTTP y revisión CUA a 320/1151, conservando los límites descritos en la guía. En el destino legacy se corrigió además el acceso interno de roles tutor/docente sin asignación. El mismo build pasó 32 controles HTTP antes de promover y 32 en el dominio habitual. Se observaron Seguimiento/Mi cuenta con administración, escuela vacía y sin errores; la nueva página inexistente regresó al inicio mediante su enlace. No se activaron servicios externos ni permisos nuevos.
 
-## Publicación vigente: ingreso y tareas · 9 de octubre de 2026
+## Publicación vigente: asistencia, comunicación y grupos · 12 de octubre de 2026
+
+Pasaron **862 pruebas**, lint, TypeScript y compilaciones Next/Sites. El mismo build READY `dpl_4ypVWKZNdKaU3CrgyqVxC5oLGznx` pasó 32 comprobaciones HTTP antes de promover y 32 en el dominio habitual. Se verificaron 553 archivos por SHA-256 en el GitHub privado escolar, commit `f749534b82cd62fd529ea2986e8ba6a2dfdd5019`. Las variables de proveedores externos siguen apagadas; el analizador no está configurado. No hubo cambios de SQL ni permisos escolares.
+
+Asistencia invalida la lista al cambiar de grupo/fecha y exporta el grupo docente actual. Grupos selecciona el UUID confirmado por la creación, aun con nombres repetidos. Chat y comunicados bloquean dobles envíos, descartan respuestas de otro contexto y conservan confirmaciones cuando falla una consulta posterior. Las denegaciones retiran los datos privados. Seguimiento legacy exige matrícula vigente y grupo activo. Cerrar sesión permanece deshabilitado hasta preparar su controlador y descarta resultados tras salir de la página.
+
+El navegador local real completó once observaciones: alta de alumno y vínculo por dirección, tarea docente y recepción familiar, comunicado y lectura persistida, asistencia docente y consulta del historial familiar, con cierre de las sesiones. El ensayo dejó intactos los 33/69/Auth6/Storage3 originales y detuvo el destino Native. Ver [aceptación de dirección y maestra](aceptacion-direccion-docente-navegador-local.md). Esta evidencia no acredita el chat por HTTPS, SMTP, archivos publicados, dispositivo físico ni una nueva entrada con la contraseña escolar privada.
+
+Evidencia privada: `outputs/release-validation-staff-ui-stability-20261012.json`, `outputs/github-publication-staff-ui-stability-verified-20261012.json`, `outputs/vercel-staff-ui-stability-promotion-20261012.json` y controles HTTP de stage/producción. Las capturas del navegador local contienen únicamente datos ficticios y se mantienen fuera del repositorio.
+
+## Publicación anterior: ingreso y tareas · 9 de octubre de 2026
 
 Vercel READY `dpl_GkrfgLksCHvPNtgHj2m23k2BMYQn`, promovido al dominio habitual desde el mismo build comprobado. Fuente escolar privada `16368140cb25d385d5a033e62de2952ef0051347`: 550 archivos comparados por SHA-256 con la fuente auditada. La historia GitHub se conserva; los commits documentales posteriores no cambian este build.
 
@@ -78,17 +88,17 @@ Los intentos HTTP fallidos se conservan: normalización local de origen, traducc
 
 | # | Flujo | Evidencia y límite |
 | --- | --- | --- |
-| 1 | Dirección registra alumno | PASS HTTP local real con Supabase; no se registró un alumno real en producción. |
-| 2 | Dirección vincula tutor | PASS HTTP local real y fixture PostgreSQL. |
+| 1 | Dirección registra alumno | PASS HTTP y navegador local real con Supabase; no se registró un alumno real en producción. |
+| 2 | Dirección vincula tutor | PASS HTTP, fixture PostgreSQL y navegador local: la relación permanece tras recargar. |
 | 3 | Tutor entra y solo ve a sus hijos | PASS HTTP local real y recorrido real de navegador con dos familias sintéticas: login normal, recarga, solo su hijo, expediente propio, 404 ajeno y cierre de sesión. Falta aceptación familiar en el hosting y dispositivo físico. |
 | 4 | Docente publica material | PASS HTTP local: FormData, análisis real, PostgreSQL y Storage. Producción mantiene cargas bloqueadas sin analizador. |
 | 5 | Familia descarga material autorizado | PASS HTTP local: MIME/cabeceras privadas/SHA256, 404 a familia ajena y 401 anónimo. Descarga normal de navegador local de 621 bytes, igual al objeto Storage; la petición ajena alcanzó HTTP404, aunque IAB bloqueó su representación. |
-| 6 | Docente crea tarea | PASS HTTP local, guía PDF adjunta incluida. |
+| 6 | Docente crea tarea | PASS HTTP local con guía PDF y navegador local para una tarea nueva con fecha CDMX; las pruebas de archivos son separadas. |
 | 7 | Tutor entrega actividad | PASS HTTP local: nota y PDF propio; entrega por alumno ajeno rechazada. Juegos y retos solo tienen fixture SQL y pruebas de componentes. |
 | 8 | Docente revisa y comenta | PASS HTTP local: revisión, observación y evaluación persistidas; familia confirma la respuesta. |
-| 9 | Docente registra asistencia | PASS HTTP académico local real: falta, justificación familiar pendiente/aprobada, historial completo, aislamiento y exportaciones CSV/XLSX/PDF con tres auditorías. Falta recorrido UI y aceptación escolar en el hosting. |
+| 9 | Docente registra asistencia | PASS HTTP académico local real: falta, justificación familiar pendiente/aprobada, historial, aislamiento y exportaciones. PASS navegador local adicional: presente/retardo persistidos tras recarga y consulta familiar. Falta aceptación escolar en el hosting. |
 | 10 | Familia consulta seguimiento | PASS HTTP local: ve observación visible y no la interna; otra familia queda bloqueada. |
-| 11 | Docente publica comunicado | PASS HTTP académico local real para docente: publicación en grupo propio, recepción/autor/acuse familiar, aislamiento de otra familia y persistencia PostgreSQL. El recorrido anterior de 149 solicitudes probó publicación por dirección; son ensayos separados. |
+| 11 | Docente publica comunicado | PASS HTTP académico local real con autor, recepción/acuse y aislamiento. PASS navegador local adicional: publicación importante, recepción familiar y Visto persistido tras recarga. El recorrido anterior de dirección es un ensayo separado. |
 | 12 | Tutor recibe notificación | PASS HTTP local de avisos internos y confirmación de lectura, más PASS Realtime local real de INSERT/UPDATE y aislamiento. Dispatcher exclusivo solo del harness: no verifica el transporte publicado ni push/correo por actividades. |
 | 13 | Usuarios autorizados intercambian mensajes | Chat HTTP Supabase real separado: 26 comprobaciones funcionales PASS para dos familias y una docente sintéticas, persistencia/avisos/acuses/aislamiento. Cleanup recuperado PASS y primer FAIL conservado. No forma parte de las 45 comprobaciones. Realtime pasó por separado en el ensayo local 22, con dispatcher exclusivo del harness; falta comprobar transporte/entrega publicados por HTTPS. |
 | 14 | Acceso a otro alumno bloqueado | PASS HTTP local para alumnos, materiales, tareas, entregas, asistencia, observaciones, comunicados y avisos, más fixtures RLS. |
