@@ -3,7 +3,7 @@ import { createSchoolDatabaseClient, SupabaseDatabaseError } from "@/lib/supabas
 import { and, desc, eq, isNull, lt, or } from "drizzle-orm";
 import { z } from "zod";
 import { getDb } from "@/db";
-import { auditLog, observations, students, teacherGroups, teachers } from "@/db/schema";
+import { auditLog, groups, observations, students, teacherGroups, teachers } from "@/db/schema";
 import { actorFromRequest, errorResponse as accessErrorResponse, hasRole, maySeeStudent, mayTeachGroup } from "@/lib/access";
 import { isSameOriginAuthRequest } from "@/lib/supabase/auth-route-utils";
 import { enrollments } from "@/db/schema";
@@ -87,7 +87,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     }
   }
   const db = getDb();
-  const student = await db.select({ id: students.id, groupId: enrollments.groupId }).from(students).innerJoin(enrollments, eq(enrollments.studentId, students.id)).where(and(eq(students.id, id), eq(students.active, true))).limit(1);
+  const student = await db.select({ id: students.id, groupId: enrollments.groupId }).from(students).innerJoin(enrollments, eq(enrollments.studentId, students.id)).innerJoin(groups, eq(groups.id, enrollments.groupId)).where(and(eq(students.id, id), eq(students.active, true), isNull(enrollments.endedAt), eq(groups.active, true))).limit(1);
   if (!student.length) return errorResponse(404, "Alumno no disponible.");
   if (!(await mayTeachGroup(actor, student[0].groupId))) return errorResponse(404, "Alumno no disponible.");
   const observationId = crypto.randomUUID(); const now = new Date();
