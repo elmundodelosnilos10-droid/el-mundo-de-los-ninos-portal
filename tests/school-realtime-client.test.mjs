@@ -85,7 +85,20 @@ test('unmount aborts pending request and late response cannot revive client or t
 });
 test('config timeout and ready timeout recover with one retry; malformed responses never connect', async () => {
   const h = harness(); const stop = h.subscribe(); h.tick(20_000); assert.equal(h.state.requests[0].options.signal.aborted, true); h.tick(2_000); await h.respond(1);
-  h.tick(20_000); assert.equal(h.state.streams[0].closed, 1); h.tick(4_000); await h.respond(2, { enabled: 'yes' }); assert.equal(h.state.streams.length, 1); stop();
+  h.tick(30_000); assert.equal(h.state.streams[0].closed, 1); h.tick(4_000); await h.respond(2, { enabled: 'yes' }); assert.equal(h.state.streams.length, 1); stop();
+});
+test('configuration keeps 20s budget while CDC ready waits 30s without showing connected early', async () => {
+  const h = harness(); const stop = h.subscribe();
+  assert.deepEqual([...h.state.timers.values()].map(timer => timer.delay), [20_000]);
+  await h.respond();
+  assert.deepEqual([...h.state.timers.values()].map(timer => timer.delay), [30_000]);
+  const stream = h.state.streams[0];
+  stream.emit('invalidate', { scope: 'notifications' });
+  assert.equal(h.state.updates.at(-1).status, 'connecting');
+  assert.equal(h.state.updates.filter(event => event.type === 'invalidate').length, 0);
+  stream.emit('ready'); assert.equal(h.state.updates.at(-1).status, 'connected');
+  assert.deepEqual([...h.state.timers.values()].map(timer => timer.delay), [250_000]);
+  stop();
 });
 test('unknown or oversized protocol frames are ignored and cannot change connection state', async () => {
   const h = harness(); const stop = h.subscribe(); await h.respond(); const s = h.state.streams[0]; s.emit('ready', { token: 'private' }); assert.equal(h.state.updates.at(-1).status, 'connecting'); s.emit('ready');
