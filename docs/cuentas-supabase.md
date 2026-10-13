@@ -6,14 +6,26 @@ Con `SCHOOL_DATA_PROVIDER=supabase`, crear o editar cuentas usa Supabase Auth y 
 
 Dirección administra docentes y tutores. Solo un superadministrador puede crear o administrar cuentas de dirección. Ninguna de estas operaciones crea superadministradores, modifica la propia cuenta administrativa o altera una cuenta con el rol superadministrador.
 
-La creación sigue este orden:
+La creación mediante correo, que conserva el hosting publicado, sigue este orden:
 
 1. Comprobar que el correo no existe en el listado completo de Auth. Una cuenta existente requiere revisión; no se le asignan roles automáticamente.
 2. Invitar al correo mediante Auth, obtener su UUID nuevo y comprobar correo, UUID y marca de invitación.
 3. Guardar en `app_metadata` un recibo de invitación con un nonce nuevo, actor y correo. Los metadatos editables del usuario no sirven como prueba de autorización.
 4. Con el JWT del actor, ejecutar `school_provision_invited_account`. La RPC bloquea las filas Auth y perfil, valida el recibo, limita la antigüedad de la invitación y asigna perfil, rol, registro docente/tutor y auditoría en una sola transacción.
 
-El servicio administrativo de Auth solo invita y guarda el recibo. No concede roles escolares ni activa perfiles mediante una conexión administrativa a la base de datos.
+Durante la provisión, el servicio administrativo de Auth crea la identidad invitada y guarda el recibo. No concede roles escolares ni activa perfiles mediante una conexión administrativa a la base de datos.
+
+## Primer acceso interno: preparado, pendiente de publicación
+
+El usuario eligió entregar un código privado de un solo uso para que cada persona use un correo existente y cree su propia contraseña en la plataforma. Puede usar Gmail u otro proveedor; no introduce la contraseña del buzón ni inicia sesión con Google. Esta variante utiliza `generate_link` de Auth sin enviar correo y conserva la validación de identidad y la RPC de provisión. SQL32 añade una reclamación propia y atómica antes del único cambio de contraseña. La cuenta maestra y su contraseña no se modifican.
+
+La última regresión de código con reemisión pasó **1.067 pruebas**, lint, TypeScript y ambas compilaciones; el control final de la documentación se realiza antes del release. El ensayo Supabase aislado de SQL32/SQL33 pasó **14 comprobaciones/44 solicitudes reales**, incluyendo reemisión sobre el mismo UUID pendiente, reservas concurrentes, rechazo del código anterior, ingreso docente posterior y reclamaciones concurrentes con un único cambio de contraseña. Las cuentas de ensayo se retiraron y los datos/catálogo/CHECK/ACL originales se conservaron. Los resultados anteriores de **1.037 pruebas** y **9 comprobaciones/36 solicitudes de SQL32** son históricos.
+
+SQL32 y SQL33 ya se instalaron en la escuela después de sus aprobaciones explícitas; se comprobaron cuerpos, firmas, seguridad y permisos de las cuatro RPC, SELECT privado cerrado y el CHECK de cuatro estados. La clave exclusiva y el modo interno quedaron configurados solo en el servidor de Vercel, sin desplegar ni promover. **El nuevo flujo no está publicado ni tiene aceptación visual o por HTTPS escolar.** El release publicado de Biblioteca conserva sus 897 pruebas y el método anterior; la cuenta maestra no se modificó. Ver [evidencia y límites](activacion-interna.md).
+
+El código propuesto dura 30 minutos; la sesión provisional cifrada permite elegir contraseña durante un máximo de 10 minutos y no concede acceso escolar. Después se usa correo y contraseña propia en el ingreso normal. Las identidades existentes no se convierten automáticamente en invitaciones nuevas.
+
+La reemisión implementada y probada en Native se limita a un código perdido o vencido **sin verificación previa**, con identidad no confirmada, sin ingreso ni contraseña y provisión pendiente. Reserva el UUID/nonce/rol/invitador exactos antes de llamar a Auth; conserva identidad y permisos. La verificación inicial ya consume el token y confirma Auth antes de guardar contraseña: si después se cancela o caduca la cookie, se necesita recuperación por un canal verificado y revisión escolar; no otra invitación pendiente. Una cuenta activada usa recuperación normal cuando pierde su contraseña. La reemisión aún necesita publicación y aceptación visual/HTTPS; la recuperación sigue requiriendo SMTP y recepción comprobados.
 
 ## Edición y desactivación
 
@@ -41,16 +53,18 @@ Para revisar un caso incierto, un operador autorizado debe comprobar el UUID dev
 | `invitation_nonce` | Recibo único para relacionar la invitación |
 | `inviter_id` | Perfil que autorizó la invitación |
 | `provisioned_at` | Fecha de provisión |
-| `state` | `provisioned`, `quarantined` o `managed` |
+| `state` | `provisioned`, `quarantined`, `managed` o `reissuing` |
 
-RLS está activo y no hay permisos de lectura o escritura para `anon` o `authenticated`. Las RPC autorizadas operan sobre esta tabla. El estado `managed` impide que una cuarentena tardía deshaga una edición administrativa posterior.
+RLS está activo y no hay permisos directos de lectura o escritura para `anon` o `authenticated`. Las RPC autorizadas operan sobre esta tabla. El estado `managed` impide que una cuarentena tardía deshaga una edición administrativa posterior. En SQL32 instalado también representa una reclamación consumida: no acredita por sí solo que el cambio externo de contraseña terminara. No se devuelve a `provisioned` para repetir un resultado incierto.
+
+SQL33 usa `reissuing` para distinguir una reserva de reemisión de una edición administrativa. La RPC final exige el mismo actor de la reserva, UUID, nonce, recibo y permisos actuales, y una reserva de menos de cinco minutos. Un resultado incierto no se reabre automáticamente: puede haber quedado `reissuing` o, si el COMMIT final ocurrió sin confirmación, `provisioned` con el nonce nuevo. No se entrega un código sin confirmar la finalización ni se restaura el nonce anterior.
 
 ## Respaldo y catálogo PostgreSQL
 
 El script `scripts/supabase-school-backup.mjs` incluye las 32 tablas iniciales y la tabla privada de SQL24 mediante `loadSchoolBackupTables`. El catálogo de **respaldo** queda separado del catálogo de **importación D1**:
 
 - La definición de SQL24 aparece después de las tablas originales. Sus identidades Auth y perfiles referenciados deben existir antes de restaurarla.
-- UUID, nonce, actor, fecha y estado completos se conservan dentro del archivo cifrado. No se reinician los estados a `provisioned` ni se descartan `managed`/`quarantined` durante la recuperación.
+- UUID, nonce, actor, fecha y estado completos se conservan dentro del archivo cifrado. No se reinician los estados a `provisioned` ni se descartan `managed`/`quarantined`/`reissuing` durante la recuperación. Un destino que reciba `reissuing` debe tener instalado SQL33 y su CHECK de cuatro estados.
 - Se incluye en la firma de esquema, manifiesto, validación de integridad, comprobación de destino vacío y compensación de restauraciones incompletas.
 - Los respaldos anteriores conservan su firma original. `verify <directorio> --legacy-school-schema` permite verificarlos explícitamente y muestra que no contienen el estado nuevo de provisión. La opción histórica se rechaza en `backup` y `restore`: no hay restauración silenciosa de un respaldo incompleto para SQL24.
 - El transformador D1 mantiene el catálogo inicial de 32 tablas. La nueva tabla no tiene un origen D1 y su estado no se inventa durante la importación.
@@ -60,8 +74,8 @@ Auth no se recrea con el respaldo escolar actual: el destino necesita las identi
 
 ## Evidencia de revisión
 
-Las nueve pruebas unitarias de `tests/supabase-account-administration.test.mjs` comprueban el orden Auth/RPC, rechazo de cuentas existentes, identidad y recibo, errores ambiguos, cuarentena y límites de dirección. La comprobación del contrato SQL exige que las tres RPC vuelvan a verificar los permisos del actor después de esperar por el bloqueo compartido. ESLint pasó para los archivos de esta implementación.
+En la entrega inicial, las nueve pruebas unitarias de `tests/supabase-account-administration.test.mjs` comprobaron el orden Auth/RPC, rechazo de cuentas existentes, identidad y recibo, errores ambiguos, cuarentena y límites de dirección. La comprobación del contrato SQL exige que las tres RPC vuelvan a verificar los permisos del actor después de esperar por el bloqueo compartido. ESLint pasó para los archivos de aquella implementación. Esos conteos son históricos; la regresión y el ensayo de activación interna del 12 de octubre están registrados arriba y no equivalen a una publicación escolar.
 
-Las pruebas de respaldo validan el catálogo nuevo de 33 tablas separado del catálogo histórico de 32, rechazo de restauración histórica, preservación cifrada de los tres estados privados y restauración después de perfiles. Se ejecutaron las pruebas unitarias de cuentas y respaldo juntas: 24 pasaron, cero fallaron. Estos escenarios usan servicios simulados y archivos temporales; no comprueban permisos de un proyecto remoto.
+Las pruebas de respaldo validan el catálogo de 33 tablas separado del catálogo histórico de 32, rechazo de restauración histórica, preservación cifrada de los cuatro estados privados y restauración después de perfiles. En la entrega inicial se ejecutaron las pruebas unitarias de cuentas y respaldo juntas: 24 pasaron, cero fallaron; ese conteo es histórico. Estos escenarios de respaldo usan servicios simulados y archivos temporales; no comprueban permisos de un proyecto remoto. La integración actual real de activación/reemisión y sus límites están registrados arriba.
 
 `tests/supabase-accounts.integration.sql` prepara identidades sintéticas dentro de `BEGIN`/`ROLLBACK` y comprueba permisos, bloqueo de cuentas propias/superadministrador, cambio de rol sin reactivación, persistencia del nombre frente a sincronización Auth, cuarentena, estado de recuperación y auditoría. Su ejecución PostgreSQL la coordina el agente principal; este documento no acredita una ejecución remota.
