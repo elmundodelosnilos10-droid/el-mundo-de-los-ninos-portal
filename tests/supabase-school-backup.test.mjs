@@ -146,8 +146,8 @@ test("encrypted backup preserves all invitation states and restores private stat
   const directory = path.join(parent, "backup");
   t.after(() => rm(parent, { recursive: true, force: true }));
   const schema = await loadSchoolBackupTables();
-  const profileRows = ["1", "2", "3"].map(id => Object.fromEntries(schema[0].columns.map(column => [column, column === "id" ? id : column === "email" ? `${id}@example.invalid` : column === "active" || column === "email_verified" ? false : "synthetic"])));
-  const privateRows = ["provisioned", "managed", "quarantined"].map((state, index) => ({ auth_user_id: String(index + 1), invitation_nonce: `receipt-${index + 1}`, inviter_id: "1", provisioned_at: "2026-10-08T00:00:00Z", state }));
+  const profileRows = ["1", "2", "3", "4"].map(id => Object.fromEntries(schema[0].columns.map(column => [column, column === "id" ? id : column === "email" ? `${id}@example.invalid` : column === "active" || column === "email_verified" ? false : "synthetic"])));
+  const privateRows = ["provisioned", "managed", "quarantined", "reissuing"].map((state, index) => ({ auth_user_id: String(index + 1), invitation_nonce: `receipt-${index + 1}`, inviter_id: "1", provisioned_at: "2026-10-08T00:00:00Z", state }));
   const source = fakeClient({ schema, rows: { profiles: profileRows, school_account_invitation_provisions: privateRows } });
   const result = await createBackup({ directory, client: source, tables: schema, passphrase });
   assert.equal(result.tables, 33);
