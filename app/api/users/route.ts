@@ -13,6 +13,8 @@ import { paginationFrom, searchFrom } from "@/lib/pagination";
 import { createSchoolDatabaseClient } from "@/lib/supabase/database";
 import { readSchoolAccounts } from "@/lib/supabase/account-feed";
 import { inviteSchoolAccount, SchoolAccountAdministrationError } from "@/lib/supabase/account-administration";
+import { createInternalActivationCode, isInternalActivationSecret } from "@/lib/supabase/internal-activation";
+import { isInternalActivationDatabaseReady } from "@/lib/supabase/internal-activation-database";
 
 const input = z.object({
   email: z.email(),
@@ -67,10 +69,17 @@ export async function POST(request: Request) {
   const email = parsed.data.email.trim().toLowerCase();
   if (env.SCHOOL_DATA_PROVIDER === "supabase") {
     if (env.SCHOOL_AUTH_PROVIDER !== "supabase") return errorResponse(503, "Configura Supabase Auth para administrar las cuentas de la escuela.");
+    const internal = env.SCHOOL_ACCOUNT_ACTIVATION_MODE === "internal";
+    if (internal && !isInternalActivationSecret(env.SCHOOL_ACCOUNT_ACTIVATION_SECRET)) return errorResponse(503, "El primer acceso está pendiente de configuración por la escuela.");
     try {
+      if (internal && (!actor.supabaseAuth || !await isInternalActivationDatabaseReady(env, actor.supabaseAuth.accessToken))) return errorResponse(503, "El primer acceso está pendiente de configuración por la escuela.");
       const created = await inviteSchoolAccount(createSchoolAuthClient(env), createSchoolDatabaseClient(env), actor, {
         email, name: parsed.data.name, role: parsed.data.role,
-      }, env.APP_ORIGIN);
+      }, env.APP_ORIGIN, { delivery: internal ? "internal" : "email" });
+      if (created.activationIdentity) {
+        const activation = await createInternalActivationCode(created.activationIdentity, env.SCHOOL_ACCOUNT_ACTIVATION_SECRET!);
+        return Response.json({ id: created.id, invited: false, activation: { ...activation, activationPath: "/activar-cuenta" } }, { status: 201, headers: { "Cache-Control": "private, no-store", "Referrer-Policy": "no-referrer" } });
+      }
       return Response.json(created, { status: 201, headers: { "Cache-Control": "no-store" } });
     } catch (cause) {
       if (cause instanceof SchoolAccountAdministrationError) {
