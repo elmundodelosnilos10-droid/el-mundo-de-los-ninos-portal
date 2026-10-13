@@ -78,6 +78,7 @@ export default function Ingresar() {
         <button type="submit" disabled={!ready || pending}>{!ready ? "Preparando acceso…" : pending ? "Entrando…" : "Entrar al portal"}</button>
       </form>
       <p className="auth-help"><a href="/recuperar">¿Olvidaste tu contraseña?</a></p>
+      <p className="auth-help"><a href="/activar-cuenta">Activar mi cuenta · primer acceso</a></p>
       <p className="auth-help"><a href="/aviso-de-privacidad">Aviso de privacidad · estado de preparación</a></p>
       <p className="auth-help">Si todavía no tienes cuenta, dirección escolar te dará acceso.</p>
       <p className="auth-help"><a href="/escuela">Conoce el portal de nuestra escuela →</a></p>
