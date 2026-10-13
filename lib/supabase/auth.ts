@@ -55,6 +55,14 @@ export type AdminInviteUserInput = {
   user_metadata?: Record<string, unknown>;
 };
 
+export type AdminGenerateInviteLinkInput = {
+  email: string;
+  user_metadata?: Record<string, unknown>;
+};
+
+/** Server-only receipt. tokenHash is an invitation credential, not public data. */
+export type GeneratedInviteLink = { user: AuthUser; tokenHash: string };
+
 export type AdminUpdateUserInput = {
   email?: string;
   password?: string;
@@ -98,6 +106,8 @@ type AuthOperation =
   | "password_change"
   | "admin_create_user"
   | "admin_invite_user"
+  | "admin_generate_invite_link"
+  | "verify_invite_token"
   | "admin_update_user"
   | "admin_list_users"
   | "admin_disable_user"
@@ -109,6 +119,10 @@ export const SUPABASE_ACCESS_COOKIE_NAME = "__Host-school-access";
 export const SUPABASE_REFRESH_COOKIE_NAME = "__Host-school-refresh";
 const MAX_COOKIE_HEADER_LENGTH = 32_768;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+// GoTrue currently hashes email OTPs with SHA-224 (56 hexadecimal characters).
+// Accept the bounded SHA-256 form too; neither arbitrary tokens nor PKCE codes
+// are valid for the server-created invite flow.
+const INVITE_TOKEN_HASH_PATTERN = /^(?:[0-9a-f]{56}|[0-9a-f]{64})$/i;
 
 /** Create a client from server-only environment bindings. */
 export function createSchoolAuthClient(
@@ -259,7 +273,61 @@ export function createSupabaseAuthClient(
     return parseUser(payload, operation);
   }
 
+  /** Exchange only an invite credential. Callers must keep this session private
+   * until they verify the school invitation and complete password setup. */
+  async function verifyInviteTokenHash(tokenHash: string): Promise<AuthSession> {
+    const operation = "verify_invite_token" as const;
+    if (typeof tokenHash !== "string" || !INVITE_TOKEN_HASH_PATTERN.test(tokenHash)) {
+      throw authError("invalid_input", operation);
+    }
+    const payload = await request(operation, "verify", {
+      method: "POST",
+      key: publicKey(operation),
+      body: { token_hash: tokenHash, type: "invite" },
+    });
+    return parseSession(payload, operation);
+  }
+
   const admin = {
+    /** Generate an invitation without invoking an email-sending endpoint. */
+    async generateInviteLink(input: AdminGenerateInviteLinkInput): Promise<GeneratedInviteLink> {
+      const operation = "admin_generate_invite_link" as const;
+      if (!input || typeof input !== "object" || Array.isArray(input)
+        || Object.keys(input).some(key => !["email", "user_metadata"].includes(key))) {
+        throw authError("invalid_input", operation);
+      }
+      validateEmail(input.email, operation);
+      if (input.user_metadata !== undefined && (!input.user_metadata || typeof input.user_metadata !== "object" || Array.isArray(input.user_metadata))) {
+        throw authError("invalid_input", operation);
+      }
+      const adminKey = serviceKey(operation);
+      const payload = await request(operation, "admin/generate_link", {
+        method: "POST",
+        key: adminKey,
+        ...(adminKey.startsWith("sb_secret_") ? {} : { bearer: adminKey }),
+        body: { type: "invite", email: input.email.trim().toLowerCase(), ...(input.user_metadata === undefined ? {} : { data: input.user_metadata }) },
+      });
+      if (!payload || typeof payload !== "object" || Array.isArray(payload)) throw authError("rejected", operation, 502);
+      const receipt = payload as Record<string, unknown>;
+      if (receipt.verification_type !== "invite" || typeof receipt.hashed_token !== "string" || !INVITE_TOKEN_HASH_PATTERN.test(receipt.hashed_token)) {
+        throw authError("rejected", operation, 502);
+      }
+      // Auth REST returns identity fields and credentials in one flat object.
+      // Strip all link properties so the user object cannot leak another copy
+      // of the credential through metadata stamping or account responses.
+      const identity = { ...receipt };
+      for (const key of ["action_link", "email_otp", "hashed_token", "verification_type", "redirect_to"]) delete identity[key];
+      const invited = parseUser(identity, operation);
+      if (typeof invited.email !== "string" || invited.email.trim().toLowerCase() !== input.email.trim().toLowerCase()
+        || typeof invited.invited_at !== "string" || !Number.isFinite(Date.parse(invited.invited_at))) {
+        throw authError("rejected", operation, 502);
+      }
+      for (const metadata of [invited.app_metadata, invited.user_metadata]) {
+        if (metadata !== undefined && (!metadata || typeof metadata !== "object" || Array.isArray(metadata))) throw authError("rejected", operation, 502);
+      }
+      return { user: invited, tokenHash: receipt.hashed_token };
+    },
+
     async inviteUserByEmail(input: AdminInviteUserInput): Promise<AuthUser> {
       const operation = "admin_invite_user" as const;
       validateEmail(input.email, operation);
@@ -367,7 +435,7 @@ export function createSupabaseAuthClient(
     },
   };
 
-  return { signIn, refresh, verifyCurrentUser, signOut, requestPasswordRecovery, changePassword, admin };
+  return { signIn, refresh, verifyCurrentUser, signOut, requestPasswordRecovery, changePassword, verifyInviteTokenHash, admin };
 }
 
 /** Serialize one secure host-only auth cookie. Secure flags are fixed. */
