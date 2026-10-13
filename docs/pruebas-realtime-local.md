@@ -52,3 +52,17 @@ Con autorización del coordinador, el harness actual da a cada WebSocket nativo 
 `outputs/supabase-native-realtime-20261009-attempt22.json` obtuvo **PASS** con PostgreSQL 17.11 y Auth/Realtime reales: avisos INSERT/UPDATE, mensajes INSERT/UPDATE para docente y familia vinculada, rechazo de familia ajena, SSE ready/invalidation sin datos privados, cierre voluntario con control positivo y revocación de perfil con lectura/eventos bloqueados y cierre SSE en el intervalo real. Los probes de activación también confirmaron SUBSCRIBED.
 
 `outputs/supabase-native-realtime-20261009-attempt22-postflight.json` comprobó después de la limpieza dirigida: Auth API y users/identities/sessions vacíos, las 33 tablas escolares sin filas y Storage objects vacío. No se escribió en el destino restaurado ni en producción. `productionTransportVerified:false` se conserva en la evidencia: este PASS corresponde al dispatcher exclusivo del harness; los FAIL previos del transporte compartido permanecen disponibles.
+
+## Intento del 12 de octubre de 2026: sin aceptación
+
+`outputs/supabase-chat-browser-acceptance-20261012.json` registra **NOT_ACCEPTED**. El navegador se detuvo antes de introducir credenciales o enviar el ingreso; no se realizó el intercambio de mensajes. Las pruebas HTTP locales del código original confirmaron ingreso/sesión con 200, configuración habilitada y eventos con 200. El SDK predeterminado terminó con `unavailable` antes de `ready`; hubo cero conversaciones y cero mensajes. Node 24 dispone de WebSocket, pero la causa exacta de este resultado permanece sin establecer.
+
+La limpieza/custodia sí pasó: 33 tablas/69 filas/6 cuentas Auth/3 objetos quedaron conservados, con campos originales, hashes, identidades y bytes privados. Se restauró el horario de comunicación y el catálogo original de 84 funciones; se comprobaron cerrados los seis puertos Native y los seis puertos ayudantes. El recibo anterior del supervisor se conserva byte por byte fuera del repositorio y su estado se corrigió para separar limpieza de aceptación.
+
+Este intento no probó producción ni HTTPS de Vercel. El PASS del dispatcher exclusivo del 9 de octubre conserva su alcance; el chat de navegador y la entrega con transporte predeterminado requieren diagnóstico y aceptación posteriores. Un HTTP200 del endpoint de eventos no acredita que el stream haya llegado a `ready` ni que entregue mensajes.
+
+## Evidencia de accesos separada del chat
+
+La regresión de código con reemisión `outputs/release-validation-internal-reissue-retry1-20261012.json` pasó **1.067 pruebas**, lint, TypeScript y ambas compilaciones antes de esta actualización documental. El ensayo `outputs/supabase-internal-reissue-native-20261012.private.json` pasó **14 comprobaciones/44 solicitudes reales** de SQL32/SQL33, activación y reemisión sin verificar, con limpieza y conservación de datos/catálogo/CHECK/ACL. Los resultados anteriores de 1.037 pruebas y 9 comprobaciones/36 solicitudes de activación son históricos y separados.
+
+Las cuatro RPC y la configuración exclusiva del servidor ya están instaladas y comprobadas en la escuela, pero ese flujo aún no está publicado ni aceptado visualmente o por HTTPS. La recuperación de cuentas confirmadas o activadas y SMTP siguen pendientes. Estos avances de acceso no cambian el resultado del chat: **NOT_ACCEPTED, cero conversaciones y cero mensajes**, con el SDK predeterminado terminando en `unavailable`. No demuestran entrega, reconexión ni revocación de mensajes con el transporte publicado.
