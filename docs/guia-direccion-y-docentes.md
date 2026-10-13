@@ -1,6 +1,6 @@
 # Puesta en marcha para dirección y docentes
 
-**Actualizada: 9 de octubre de 2026.** La [guía rápida](manual-uso.md) explica cada sección a dirección, maestras y familias. Esta guía organiza la preparación y la rutina escolar.
+**Actualizada: 12 de octubre de 2026.** La [guía rápida](manual-uso.md) explica cada sección a dirección, maestras y familias. Esta guía organiza la preparación y la rutina escolar.
 
 Se conserva el hosting Vercel actual en el equipo **pandito**, por petición del usuario. El repositorio GitHub privado escolar ya está creado y verificado. No se necesita trasladar el hosting para presentar el portal.
 
@@ -8,11 +8,23 @@ Se conserva el hosting Vercel actual en el equipo **pandito**, por petición del
 
 1. Superadministración comprueba el acceso administrativo al portal publicado y autoriza a las personas que administrarán dirección.
 2. Dirección crea ciclo y grupos en **Grupos**, con etapa y fechas correctas.
-3. Dirección invita a docentes y tutores desde **Cuentas**. Primero prueba una invitación y recuperación con un destinatario autorizado: que el correo llegue, que el enlace abra el portal y que la persona pueda crear su contraseña privada.
+3. Dirección registra nombre, correo existente y rol de docentes y tutores desde **Cuentas**. Con el modo interno habilitado, entrega el código de primer acceso en privado y la persona elige su propia contraseña. Primero confirma ese recorrido y el ingreso posterior con una cuenta nueva autorizada. La recuperación por correo requiere una comprobación independiente; no forma parte de la invitación interna.
 4. Dirección asigna las docentes a sus grupos; registra alumnos y vincula tutores desde el expediente. Revisa cuenta, relación familiar e inscripción activa antes de compartir información.
 5. Cada docente y tutor entra con su cuenta propia y verifica que aparezcan únicamente los grupos o hijos autorizados.
 
 La escuela administra nombre, rol y estado de la cuenta. Desactivar el perfil bloquea las solicitudes escolares posteriores y conserva el historial; no revoca por sí solo todos los tokens Auth. Cambiar el correo requiere coordinación técnica entre Auth y el perfil, como explica [Cuentas Supabase](cuentas-supabase.md).
+
+## Entregar y renovar el primer acceso
+
+Consulta [Activación interna](activacion-interna.md) y [Estado de requisitos](estado-requisitos.md) para comprobar la publicación y aceptación vigentes antes de distribuir códigos.
+
+- **Entrega privada:** comprueba el correo y el destinatario. El código dura **30 minutos desde su emisión** y no se envía automáticamente por correo en el modo interno. Compártelo solo por el canal privado acordado con la escuela; no lo publiques en avisos, grupos, capturas ni enlaces.
+- **Contraseña personal:** la persona abre `/activar-cuenta`, introduce su correo y código y elige una contraseña del portal de al menos **12 caracteres**. El código se verifica una sola vez. Después tiene hasta **10 minutos** de sesión provisional para terminar; todavía no tiene acceso escolar. Dirección no elige ni distribuye la contraseña. Un correo Gmail sirve como identificador sin pedir su contraseña de Google.
+- **Código perdido o vencido sin verificar:** dirección puede renovar la invitación pendiente de una identidad que todavía no esté confirmada. Conserva la misma cuenta, rol y vínculos; el código anterior queda invalidado. No vuelvas a dar de alta el mismo correo.
+- **Código ya verificado:** cancelar o dejar vencer la sesión provisional antes de guardar la contraseña no deshace la confirmación. Esa cuenta no es elegible para renovar la invitación inicial; requiere revisión y recuperación por un canal verificado. Una cuenta ya activada tampoco se vuelve a invitar para recuperar su contraseña.
+- **Resultado incierto:** si una renovación o activación falla después de enviarse, conserva el mensaje de error y solicita revisión técnica antes de repetir. No prometas que la operación se deshizo ni cambies permisos o contraseña por una coincidencia de correo.
+
+El servicio SMTP, la entrega del correo de recuperación y su regreso al portal siguen pendientes de aceptación. Hasta confirmarlos, no presentes la recuperación como disponible ni abras el uso diario a personas que no puedan completar su primer acceso. La guía de [Activación interna](activacion-interna.md) distingue los casos que requieren revisión privada.
 
 ## Preparar la clase
 
@@ -48,7 +60,7 @@ El ingreso muestra **Preparando acceso…** unos instantes antes de habilitar lo
 ## Si algo falla
 
 - Sin hijo/grupo visible: dirección revisa vínculo, matrícula y asignación docente.
-- Acceso rechazado: usa recuperación; si sigue fallando, dirección revisa perfil y rol. No envíes contraseñas por chat.
+- Acceso rechazado: comprueba que se haya completado la activación y usa el correo y la contraseña propios del portal. Dirección revisa perfil, rol y estado de la cuenta. Un código sin verificar puede renovarse si la invitación sigue pendiente; después de verificarlo o de activar la cuenta se necesita recuperación por un canal verificado. SMTP y recepción todavía están pendientes de aceptación. No envíes contraseñas por chat ni recrees la cuenta con el mismo correo.
 - Guardado o carga inciertos: vuelve a consultar lista/estado antes de repetir; conserva el mensaje de error y contacta a dirección.
 - En Alumnos y Cuentas, un guardado confirmado conserva su mensaje aunque falle la actualización de la lista. Usa **Actualizar lista** en Cuentas o **Actualizar listado** en Alumnos para repetir la consulta; no vuelvas a dar de alta a la misma persona.
 - Si la sesión o los permisos dejan de autorizar el directorio, sus registros se retiran de pantalla y los controles quedan bloqueados. Vuelve a entrar con la cuenta autorizada o contacta a dirección.
@@ -60,3 +72,5 @@ El ingreso muestra **Preparando acceso…** unos instantes antes de habilitar lo
 El portal usa Vercel/Next.js y Supabase Auth/PostgreSQL/Storage; la rama D1/R2 se conserva para el destino anterior. El recorrido escolar local real pasó **149 solicitudes/45 comprobaciones**, incluyendo archivos privados, análisis real, revisión de tareas, asistencia, seguimiento, comunicados y aislamiento de dos familias. Un ensayo separado de restauración local pasó seis comprobaciones de cuentas, datos, archivos privados y acceso de dos familias. Estos resultados no acreditan correo, invitaciones, Google Meet ni operación/recuperación de producción. Las pruebas y pendientes vigentes están en [Estado de requisitos](estado-requisitos.md).
 
 En el destino restaurado, **dos familias y una docente sintéticas** completaron otro ensayo de chat HTTP:26 comprobaciones funcionales PASS de mensajes, lecturas, avisos, persistencia e aislamiento. El primer informe conserva FAIL por un guard de limpieza que no admitía el avance de la fecha del perfil al iniciar sesión; la limpieza dirigida posterior pasó y conservó el destino original. No se repitieron envíos. Este resultado no acredita transporte Realtime ni chat de producción.
+
+La activación interna y la renovación de invitaciones sin verificar pasaron **14 comprobaciones/44 solicitudes reales en Supabase aislado**, con limpieza confirmada. El ensayo comprobó uso único, rechazo del código anterior, renovación sobre la misma identidad pendiente e ingreso normal posterior; no acredita aceptación visual, HTTPS del hosting ni primer acceso escolar real. Consulta [Activación interna](activacion-interna.md) para el estado de publicación y los controles pendientes. La cuenta maestra y su contraseña no formaron parte de esos ensayos.
