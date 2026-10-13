@@ -12,9 +12,10 @@ const key = "sb_publishable_synthetic_only_12345678901234567890";
 const jwt = (claims = {}) => [ { alg: "HS256", typ: "JWT" }, { role: "authenticated", sub: actor, exp: Math.floor(Date.now() / 1000) + 300, ...claims } ]
   .map(value => Buffer.from(JSON.stringify(value)).toString("base64url")).join(".") + ".synthetic_signature";
 const flush = () => new Promise(resolve => setImmediate(resolve));
+class FixtureTransport {}
 
 function harness({ globals = {}, auth = Promise.resolve(), throwAt, unsubscribe = Promise.resolve("ok"), disconnect } = {}) {
-  const state = { factory: [], auth: [], names: [], filters: [], ready: 0, failed: [], invalidations: [], unsubscribed: 0, disconnected: 0, teardowns: 0, leaveTimeout: null, status: null, sdkOptions: null };
+  const state = { factory: [], auth: [], names: [], filters: [], ready: 0, failed: [], invalidations: [], unsubscribed: 0, disconnected: 0, teardowns: 0, leaveTimeout: null, status: null, sdkOptions: null, sdkChannelOptions: null };
   const channel = {
     on: (filter, callback) => { if (throwAt === "on") throw Error("private-payload-token"); state.filters.push({ filter, callback }); },
     subscribe: callback => { if (throwAt === "subscribe") throw Error("private-payload-token"); state.status = callback; },
@@ -30,13 +31,14 @@ function harness({ globals = {}, auth = Promise.resolve(), throwAt, unsubscribe 
   class FakeSdkClient {
     constructor(endpoint, options) { state.sdkOptions = options; state.factory.push({ endpoint }); }
     setAuth(token) { return client.setAuth(token); }
-    channel(name) { state.names.push(name); return { on: (type, filter, callback) => { assert.equal(type, "postgres_changes"); channel.on(filter, callback); }, subscribe: callback => channel.subscribe(callback), unsubscribe: timeout => { state.leaveTimeout = timeout; return channel.unsubscribe(); }, teardown: () => { state.teardowns++; } }; }
+    channel(name, options) { state.names.push(name); state.sdkChannelOptions = options; return { on: (type, filter, callback) => { assert.equal(type, "postgres_changes"); channel.on(filter, callback); }, subscribe: callback => channel.subscribe(callback), unsubscribe: timeout => { state.leaveTimeout = timeout; return channel.unsubscribe(); }, teardown: () => { state.teardowns++; } }; }
     removeChannel() { return channel.unsubscribe(); }
     disconnect() { return client.disconnect(); }
   }
   const sandboxModule = { exports: {} };
   const source = ts.transpileModule(fs.readFileSync(new URL("../lib/supabase/realtime.ts", import.meta.url), "utf8"), { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS } }).outputText;
   vm.runInNewContext(source, { module: sandboxModule, exports: sandboxModule.exports, require: name => {
+    if (name === "@/lib/runtime/realtime-transport") return { schoolRealtimeTransport: FixtureTransport };
     assert.equal(name, "@supabase/realtime-js"); return { RealtimeClient: FakeSdkClient };
   }, URL, atob, ...globals });
   const options = { url: "https://school.example.test", publishableKey: key, accessToken: jwt(), userId: actor, canMessage: true,
@@ -68,6 +70,7 @@ test("uses caller JWT before joining; exactly five INSERT/UPDATE filters and no 
 
 test("SDK bridge configures public apikey and JWT provider, suppressing SDK diagnostics", async () => {
   const h = harness(); const handle = h.subscribe({}, true); await flush();
+  assert.equal(h.state.sdkOptions.transport, FixtureTransport);
   assert.equal(h.state.sdkOptions.params.apikey, key);
   assert.equal(await h.state.sdkOptions.accessToken(), h.state.auth[0]);
   assert.equal(h.state.sdkOptions.timeout, 10000);
@@ -75,6 +78,20 @@ test("SDK bridge configures public apikey and JWT provider, suppressing SDK diag
   assert.ok(!JSON.stringify(h.state.sdkOptions.params).includes("service_role"));
   await handle.stop();
   assert.equal(h.state.leaveTimeout, 1000); assert.equal(h.state.teardowns, 1);
+});
+
+test("productive SDK channel waits for CDC and does not expose readiness on configuration or join creation", async () => {
+  const h = harness(); const handle = h.subscribe({}, true); await flush();
+  assert.deepEqual(JSON.parse(JSON.stringify(h.state.sdkChannelOptions)), {
+    config: { postgres_changes_options: { wait: true, timeout: 10000 } },
+  });
+  assert.equal(h.state.ready, 0);
+  h.emit("notifications", "INSERT", { user_id: actor });
+  assert.deepEqual(h.state.invalidations, []);
+  h.state.status("CHANNEL_ERROR");
+  assert.equal(h.state.ready, 0); assert.deepEqual(h.state.failed, ["connection"]);
+  h.state.status("SUBSCRIBED"); assert.equal(h.state.ready, 0);
+  await handle.stop(); assert.equal(h.state.disconnected, 1);
 });
 
 test("forwarded notifications are strictly own-user signals, without titles or raw rows", async () => {
