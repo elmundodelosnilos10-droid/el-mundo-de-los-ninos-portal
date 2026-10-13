@@ -1,9 +1,20 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { InternalReissueControl } from "./internal-reissue-control";
 
 type UserRow = { id: string; name: string; email: string; role: string; active: boolean };
-type Receipt = { id?: string; updated?: boolean; invited?: boolean; error?: string };
+type ActivationReceipt = { code: string; expiresAt: string; activationPath: "/activar-cuenta" };
+type Receipt = { id?: string; updated?: boolean; invited?: boolean; error?: string; activation?: unknown };
+const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+function internalReceipt(result: Receipt): result is Receipt & { activation: ActivationReceipt } {
+  if (!result.activation || typeof result.activation !== "object" || Array.isArray(result.activation)) return false;
+  const activation = result.activation as Partial<ActivationReceipt>;
+  return typeof result.id === "string" && uuid.test(result.id) && result.invited === false &&
+    typeof activation.code === "string" && /^EMDN1\.[A-Za-z0-9_-]{80,2042}$/.test(activation.code) &&
+    activation.activationPath === "/activar-cuenta" && typeof activation.expiresAt === "string" &&
+    Number.isFinite(Date.parse(activation.expiresAt)) && Date.parse(activation.expiresAt) > Date.now();
+}
 const listUnavailable = "No se pudo actualizar la lista de cuentas. Conservamos la última lista disponible; puede estar desactualizada.";
 const uncertainChange = "No se pudo confirmar el cambio. Actualiza la lista y revisa el estado de la cuenta antes de volver a intentarlo.";
 
@@ -16,12 +27,16 @@ function accountFeed(value: unknown): { items: UserRow[]; total: number } | null
   return result as { items: UserRow[]; total: number };
 }
 
-export function AccountManager({ initialUsers, initialTotal, canCreateDirection, actorId, useSupabaseInvites }: { initialUsers: UserRow[]; initialTotal: number; canCreateDirection: boolean; actorId: string; useSupabaseInvites: boolean }) {
+export function AccountManager({ initialUsers, initialTotal, canCreateDirection, actorId, useSupabaseInvites, useInternalActivation = false }: { initialUsers: UserRow[]; initialTotal: number; canCreateDirection: boolean; actorId: string; useSupabaseInvites: boolean; useInternalActivation?: boolean }) {
   const [users, setUsers] = useState(initialUsers);
   const [total, setTotal] = useState(initialTotal);
   const [error, setError] = useState("");
   const [listError, setListError] = useState("");
   const [message, setMessage] = useState("");
+  const [activationReceipt, setActivationReceipt] = useState<{ context: string; email: string; activation: ActivationReceipt } | null>(null);
+  const [copyMessage, setCopyMessage] = useState("");
+  const [reissueContextVersion, setReissueContextVersion] = useState(0);
+  const activationContext = `${actorId}:${canCreateDirection}:${useSupabaseInvites}:${useInternalActivation}`;
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [hasAccess, setHasAccess] = useState(true);
@@ -48,6 +63,7 @@ export function AccountManager({ initialUsers, initialTotal, canCreateDirection,
   const cancelAll = useCallback(() => {
     alive.current = false; lifecycle.current++;
     cancelList(); writeRequest.current?.abort(); writeRequest.current = null;
+    mutationLock.current = false;
   }, [cancelList]);
   const revokeAccess = useCallback(() => {
     if (!alive.current) return;
@@ -57,13 +73,19 @@ export function AccountManager({ initialUsers, initialTotal, canCreateDirection,
     listRequest.current?.abort(); listRequest.current = null;
     writeRequest.current?.abort(); writeRequest.current = null;
     setHasAccess(false); setUsers([]); setTotal(0); setSearch("");
-    setError(""); setListError(""); setMessage(""); setBusy(false); setLoading(false);
+    setError(""); setListError(""); setMessage(""); setActivationReceipt(null); setCopyMessage(""); setBusy(false); setLoading(false);
   }, []);
 
   useEffect(() => {
     alive.current = true;
     return cancelAll;
-  }, [cancelAll]);
+  }, [cancelAll, activationContext]);
+
+  useEffect(() => {
+    let current = true;
+    void Promise.resolve().then(() => { if (current && alive.current) { setActivationReceipt(null); setCopyMessage(""); setBusy(false); } });
+    return () => { current = false; };
+  }, [activationContext]);
 
   const listUrl = useCallback((targetPage = page) => {
     const params = new URLSearchParams({ page: String(targetPage), pageSize: String(pageSize) });
@@ -106,10 +128,25 @@ export function AccountManager({ initialUsers, initialTotal, canCreateDirection,
     latestListUrl.current = listUrl();
     void refresh(latestListUrl.current);
     return cancelList;
-  }, [listUrl, refresh, cancelList]);
+  }, [listUrl, refresh, cancelList, activationContext]);
 
   function canMutate() {
     return alive.current && access.current && !mutationLock.current && !reviewLock.current && !listRequest.current;
+  }
+
+  function beginReissueOperation() {
+    if (!canMutate()) return null;
+    mutationLock.current = true;
+    const generation = lifecycle.current;
+    setBusy(true); setError(""); setMessage(""); setActivationReceipt(null); setCopyMessage("");
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      if (!alive.current || !access.current || lifecycle.current !== generation) return;
+      mutationLock.current = false;
+      setBusy(false);
+    };
   }
 
   async function change(path: string, method: "POST" | "PATCH", fields: () => Record<string, unknown>, confirmation: (result: Receipt) => boolean, success: (result: Receipt) => string) {
@@ -118,7 +155,8 @@ export function AccountManager({ initialUsers, initialTotal, canCreateDirection,
     const generation = lifecycle.current;
     const controller = new AbortController(); writeRequest.current = controller;
     const current = () => alive.current && access.current && lifecycle.current === generation && !controller.signal.aborted;
-    setBusy(true); setError(""); setMessage("");
+    setBusy(true); setError(""); setMessage(""); setActivationReceipt(null); setCopyMessage("");
+    setReissueContextVersion(value => value + 1);
     try {
       const response = await fetch(path, { method, credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify(fields()), signal: AbortSignal.any([controller.signal, AbortSignal.timeout(20_000)]) });
       if (!current()) return;
@@ -140,7 +178,7 @@ export function AccountManager({ initialUsers, initialTotal, canCreateDirection,
     } catch {
       if (current()) { requireReview(); setError(uncertainChange); }
     } finally {
-      mutationLock.current = false;
+      if (writeRequest.current === controller) mutationLock.current = false;
       if (current()) { writeRequest.current = null; setBusy(false); }
     }
   }
@@ -148,9 +186,30 @@ export function AccountManager({ initialUsers, initialTotal, canCreateDirection,
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
+    const email = String(new FormData(form).get("email") ?? "").trim().toLowerCase();
     await change("/api/users", "POST", () => Object.fromEntries(new FormData(form)),
-      result => typeof result.id === "string" && result.id.length > 0 && (result.invited === undefined || typeof result.invited === "boolean"),
-      result => { form.reset(); return result.invited ? "Invitación creada. Revisa con la persona la recepción del correo para activar su acceso." : "Cuenta creada. Comparte el acceso inicial de forma privada."; });
+      result => useInternalActivation ? internalReceipt(result) : typeof result.id === "string" && result.id.length > 0 && (result.invited === undefined || typeof result.invited === "boolean"),
+      result => {
+        form.reset();
+        if (useInternalActivation && internalReceipt(result)) {
+          setActivationReceipt({ context: activationContext, email, activation: result.activation });
+          return "Acceso creado. Entrega el código en privado; la persona elegirá su contraseña al activarlo.";
+        }
+        return result.invited ? "Invitación creada. Revisa con la persona la recepción del correo para activar su acceso." : "Cuenta creada. Comparte el acceso inicial de forma privada.";
+      });
+  }
+
+  async function copyActivation() {
+    const receipt = activationReceipt;
+    if (!alive.current || !access.current || !receipt || receipt.context !== activationContext) return;
+    const generation = lifecycle.current;
+    setCopyMessage("");
+    try {
+      await navigator.clipboard.writeText(receipt.activation.code);
+      if (alive.current && access.current && lifecycle.current === generation) setCopyMessage("Código copiado. Compártelo únicamente con la persona autorizada.");
+    } catch {
+      if (alive.current && access.current && lifecycle.current === generation) setCopyMessage("No se pudo copiar. Selecciona el código y cópialo manualmente.");
+    }
   }
 
   function patchConfirmed(result: Receipt, person: UserRow) { return result.updated === true && (result.id === undefined || result.id === person.id); }
@@ -183,10 +242,21 @@ export function AccountManager({ initialUsers, initialTotal, canCreateDirection,
         <label htmlFor="account-name">Nombre</label><input id="account-name" name="name" required minLength={2} maxLength={100} disabled={controlsDisabled} />
         <label htmlFor="account-email">Correo escolar o del tutor</label><input id="account-email" name="email" type="email" autoComplete="off" required disabled={controlsDisabled} />
         <label htmlFor="account-role">Tipo de acceso</label><select id="account-role" name="role" disabled={controlsDisabled}><option value="docente">Maestra / docente</option><option value="tutor">Madre, padre o tutor</option>{canCreateDirection && <option value="direccion">Dirección</option>}</select>
-        {useSupabaseInvites ? <p className="form-hint">Enviaremos una invitación al correo. Cada persona crea su contraseña en privado.</p> : <><label htmlFor="account-password">Contraseña inicial (mínimo 12 caracteres)</label><input id="account-password" name="password" type="password" autoComplete="new-password" minLength={12} maxLength={128} required disabled={controlsDisabled} /></>}
-        <button disabled={controlsDisabled}>{busy ? "Guardando…" : useSupabaseInvites ? "Enviar invitación" : "Crear cuenta"}</button>
+        {useInternalActivation ? <p className="form-hint">Usa el correo que la persona ya tenga. La escuela entregará un código privado de un solo uso para el primer acceso; cada persona crea su propia contraseña. Después entrará con su correo y contraseña.</p> : useSupabaseInvites ? <p className="form-hint">Enviaremos una invitación al correo. Cada persona crea su contraseña en privado.</p> : <><label htmlFor="account-password">Contraseña inicial (mínimo 12 caracteres)</label><input id="account-password" name="password" type="password" autoComplete="new-password" minLength={12} maxLength={128} required disabled={controlsDisabled} /></>}
+        <button disabled={controlsDisabled}>{busy ? "Guardando…" : useInternalActivation ? "Crear acceso" : useSupabaseInvites ? "Enviar invitación" : "Crear cuenta"}</button>
       </form>
       {error && <p className="form-error" role="alert">{error}</p>}{message && <p className="form-success" role="status">{message}</p>}
+      {activationReceipt?.context === activationContext && <aside aria-label="Código privado del nuevo acceso">
+        <h3>Primer acceso de {activationReceipt.email}</h3>
+        <p>Entrega este código en privado. Solo aparece aquí ahora; no se guardará en este navegador.</p>
+        <label htmlFor="account-activation-code">Código de un solo uso</label>
+        <textarea id="account-activation-code" readOnly value={activationReceipt.activation.code} rows={3} spellCheck={false} />
+        <p>Vence: {new Intl.DateTimeFormat("es-MX", { dateStyle: "medium", timeStyle: "short", timeZone: "America/Mexico_City" }).format(new Date(activationReceipt.activation.expiresAt))} (hora de Ciudad de México).</p>
+        <p>La persona debe abrir <a href="/activar-cuenta">Activar mi cuenta</a> y escribir su correo y el código. No envíes una contraseña.</p>
+        <button type="button" className="secondary-button" onClick={() => { void copyActivation(); }}>Copiar código privado</button>
+        <button type="button" className="secondary-button" onClick={() => { setActivationReceipt(null); setCopyMessage(""); }}>Ocultar código</button>
+        {copyMessage && <p role="status">{copyMessage}</p>}
+      </aside>}
     </section>
     <section className="portal-panel">
       <h2>Personas con acceso</h2>
@@ -202,7 +272,17 @@ export function AccountManager({ initialUsers, initialTotal, canCreateDirection,
       {users.length ? <ul className="record-list">{users.map(person => {
         const protectedAccount = person.id === actorId || person.role === "superadmin" || (person.role === "direccion" && !canCreateDirection);
         return <li key={`${person.id}-${person.role}`}><div><strong>{person.name} · {person.role}</strong><span>{person.email} · {person.active ? "Activa" : "Desactivada"}</span>
-          {!protectedAccount && <details><summary>Administrar cuenta</summary><form className="school-form" onSubmit={event => edit(event, person)}><label htmlFor={`edit-name-${person.id}`}>Nombre</label><input id={`edit-name-${person.id}`} name="name" defaultValue={person.name} required minLength={2} maxLength={100} disabled={controlsDisabled} />{useSupabaseInvites ? <><input type="hidden" name="email" value={person.email} /><p className="form-hint">Para cambiar el correo de acceso, contacta a la administración técnica. El correo también debe actualizarse en Supabase Auth.</p></> : <><label htmlFor={`edit-email-${person.id}`}>Correo</label><input id={`edit-email-${person.id}`} name="email" type="email" defaultValue={person.email} required disabled={controlsDisabled} /> </>}<button disabled={controlsDisabled}>Guardar cambios</button></form><form className="school-form" onSubmit={event => setRole(event, person)}><label htmlFor={`edit-role-${person.id}`}>Tipo de acceso</label><select id={`edit-role-${person.id}`} name="role" defaultValue={person.role} disabled={controlsDisabled}><option value="docente">Docente</option><option value="tutor">Madre, padre o tutor</option>{canCreateDirection && <option value="direccion">Dirección</option>}</select><button className="secondary-button" disabled={controlsDisabled}>Cambiar acceso</button><p className="form-hint">El cambio actualiza los permisos de acceso. Solo superadministración puede asignar dirección.</p></form><button className="secondary-button" type="button" disabled={controlsDisabled} onClick={() => setActive(person)}>{person.active ? "Desactivar acceso" : "Reactivar acceso"}</button></details>}
+          {!protectedAccount && <details><summary>Administrar cuenta</summary><form className="school-form" onSubmit={event => edit(event, person)}><label htmlFor={`edit-name-${person.id}`}>Nombre</label><input id={`edit-name-${person.id}`} name="name" defaultValue={person.name} required minLength={2} maxLength={100} disabled={controlsDisabled} />{useSupabaseInvites || useInternalActivation ? <><input type="hidden" name="email" value={person.email} /><p className="form-hint">Para cambiar el correo de acceso, contacta a la administración técnica. El correo también debe actualizarse en Supabase Auth.</p></> : <><label htmlFor={`edit-email-${person.id}`}>Correo</label><input id={`edit-email-${person.id}`} name="email" type="email" defaultValue={person.email} required disabled={controlsDisabled} /> </>}<button disabled={controlsDisabled}>Guardar cambios</button></form><form className="school-form" onSubmit={event => setRole(event, person)}><label htmlFor={`edit-role-${person.id}`}>Tipo de acceso</label><select id={`edit-role-${person.id}`} name="role" defaultValue={person.role} disabled={controlsDisabled}><option value="docente">Docente</option><option value="tutor">Madre, padre o tutor</option>{canCreateDirection && <option value="direccion">Dirección</option>}</select><button className="secondary-button" disabled={controlsDisabled}>Cambiar acceso</button><p className="form-hint">El cambio actualiza los permisos de acceso. Solo superadministración puede asignar dirección.</p></form><button className="secondary-button" type="button" disabled={controlsDisabled} onClick={() => setActive(person)}>{person.active ? "Desactivar acceso" : "Reactivar acceso"}</button></details>}
+          {useInternalActivation && person.active && !protectedAccount && <InternalReissueControl
+            key={`${activationContext}:${person.id}:${person.email}:${person.role}:${person.active}:${reissueContextVersion}`}
+            targetId={person.id}
+            email={person.email}
+            contextKey={`${activationContext}:${person.role}:${person.active}:${reissueContextVersion}`}
+            disabled={controlsDisabled}
+            beginOperation={beginReissueOperation}
+            onUnauthorized={revokeAccess}
+            onUncertain={requireReview}
+          />}
         </div></li>;
       })}</ul> : <p>{loading ? "Estamos comprobando las cuentas." : listError ? "No se pudo comprobar si hay cuentas para estos filtros." : "No hay coincidencias con esos filtros."}</p>}
       {total > pageSize && <nav className="pagination-controls" aria-label="Páginas de cuentas"><button className="secondary-button" type="button" disabled={busy || loading || currentPage <= 1} onClick={() => setPage(currentPage - 1)}>Anterior</button><span>Página {currentPage} de {pageCount}</span><button className="secondary-button" type="button" disabled={busy || loading || currentPage >= pageCount} onClick={() => setPage(currentPage + 1)}>Siguiente</button></nav>}
