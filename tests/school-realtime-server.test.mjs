@@ -178,11 +178,22 @@ test("adapter failures, throws, synchronous failure and missing readiness termin
     const r = runtime(); r.state.subscribeFailure = kind === "throw"; r.state.syncFailure = kind === "sync";
     const { reader } = await start(r);
     if (kind === "configuration" || kind === "connection") r.state.options.onFailure(kind);
-    if (kind === "timeout") await r.tick(15_000, true);
+    if (kind === "timeout") await r.tick(25_000, true);
     assert.equal(await frame(reader), 'event: end\ndata: {"reason":"unavailable"}\n\n'); assert.equal(await frame(reader), null);
     assert.equal(r.state.intervals.size, 0); assert.equal(r.state.timeouts.size, 0);
     assert.equal(r.state.stops, kind === "throw" ? 0 : 1);
   }
+});
+
+test("CDC readiness has a 25s deadline; heartbeat alone cannot authorize invalidations", async () => {
+  const r = runtime(); const { reader } = await start(r);
+  assert.ok([...r.state.timeouts.values()].some(timer => timer.ms === 25_000));
+  assert.ok(![...r.state.timeouts.values()].some(timer => timer.ms === 15_000));
+  await r.tick(15_000); assert.equal(await frame(reader), ": heartbeat\n\n");
+  r.state.options.onInvalidate({ scope: "notifications" });
+  await r.tick(25_000, true);
+  assert.equal(await frame(reader), 'event: end\ndata: {"reason":"unavailable"}\n\n');
+  assert.equal(await frame(reader), null); assertClosed(r.state);
 });
 
 test("slow reader backpressure keeps queued bytes bounded and stops transport without retries", async () => {
