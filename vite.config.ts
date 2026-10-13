@@ -74,6 +74,11 @@ export default defineConfig(async ({ command }) => {
               alias: [{
                 find: "@/lib/runtime/env",
                 replacement: fileURLToPath(new URL("./lib/runtime/env.cloudflare.ts", import.meta.url)),
+              }, {
+                // Workers retain their native client; the Node ws module must
+                // never enter the Worker dependency graph.
+                find: "@/lib/runtime/realtime-transport",
+                replacement: fileURLToPath(new URL("./lib/runtime/realtime-transport.cloudflare.ts", import.meta.url)),
               }],
             },
           };
