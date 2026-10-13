@@ -1,14 +1,16 @@
 # Respaldo y restauración de ensayo — Supabase escolar
 
-Actualizado: 9 de octubre de 2026. La copia SQL del proyecto escolar está cifrada, verificada offline y sus datos se recuperaron en un destino Native separado. La comprobación de contraseña y recuperación de configuración de servicios sigue pendiente. Los ensayos sintéticos anteriores se conservan al final de esta guía.
+Actualizado: 12 de octubre de 2026. La copia SQL del proyecto escolar capturada el 9 de octubre está cifrada, verificada offline y sus datos se recuperaron en un destino Native separado. La comprobación de contraseña y recuperación de configuración de servicios sigue pendiente. Los ensayos sintéticos anteriores se conservan al final de esta guía.
 
 ## Estado comprobado
 
-El hosting publicado es [Vercel](https://el-mundo-de-los-ninos-portal.vercel.app), despliegue READY `dpl_AmZ38XZYKW78An34G9Hn3pTpizVn`, con Supabase escolar como Auth/datos/Storage. Hay 25 versiones registradas: base 08 a 28 y publicación Realtime 30. El grant SELECT de SQL29 ya se autorizó y ejecutó sobre las 33 tablas; su versión todavía no se registra en el historial de migraciones. Biblioteca 27 y calendario 28 pasaron pruebas PostgreSQL con ROLLBACK. Ver [Hosting Vercel](hosting-vercel.md), [Verificación Vercel/Supabase](verificacion-vercel-supabase-20261008.md) y [Estado de requisitos](estado-requisitos.md).
+El hosting publicado es [Vercel](https://el-mundo-de-los-ninos-portal.vercel.app), con Supabase escolar como Auth/datos/Storage. El release vigente de Biblioteca del 12 de octubre es READY `dpl_ARmHZ8QwfWXvirXdDGSgWPxs4pKG`, con 897 pruebas y 32 controles HTTP por destino. Ver [Estado de requisitos](estado-requisitos.md) para la autoridad y límites del release; el nuevo primer acceso interno todavía no se publica.
+
+La captura escolar del 9 de octubre registró 25 versiones: base 08 a 28 y publicación Realtime 30. El grant SELECT de SQL29 se autorizó y ejecutó sobre las 33 tablas; su versión no figuraba en el historial. Biblioteca 27 y calendario 28 pasaron pruebas PostgreSQL con ROLLBACK. Este inventario corresponde a aquella captura, no a una nueva consulta del 12 de octubre. Ver [Hosting Vercel](hosting-vercel.md) y [Verificación Vercel/Supabase](verificacion-vercel-supabase-20261008.md).
 
 El intento HTTP anterior se detuvo por **403 al leer `profiles`** y se conserva como fallo histórico. Ahora se verificó SELECT efectivo para `service_role` en las 33 tablas mediante SQL de solo lectura. La copia nueva se obtuvo mediante Export CSV del SQL Editor; no acredita que se haya repetido el export HTTP con una clave. Las cargas siguen bloqueadas sin scanner real. Los directorios parciales del intento anterior no son copias válidas.
 
-## Comprobación actual del proyecto escolar · 9 de octubre de 2026
+## Comprobación del proyecto escolar · 9 de octubre de 2026
 
 Por petición del usuario se priorizó el respaldo completo. Se comprobó acceso autenticado al dashboard correcto `gzojyxrxamydrqcxljdg`, organización escolar, plan Free y estado Healthy. La pantalla de Backups informa que el plan no incluye copias del proyecto; no se contrató ningún servicio ni plan.
 
@@ -20,9 +22,9 @@ Una única sentencia SELECT capturó las **33 tablas públicas y las 27 tablas A
 
 El CSV original y el manifiesto se cifraron con AES-256-GCM/scrypt y se verificaron dos veces offline, comparando el CSV byte por byte. Después se retiró el CSV en claro. La frase privada está separada del paquete. Evidencia: `outputs/production-backup-sql-encrypted-20261009.json`; el primer fallo del límite CSV de Python se conserva en `outputs/production-backup-sql-capture-20261009-attempt1.json` y se corrigió leyendo el mismo archivo, sin repetir la consulta.
 
-Este formato es una **instantánea SQL del estado actual con Storage vacío**, no un `pg_dump` ni una copia de configuración de servicios, secretos, SMTP o proveedores. No exporta bytes Storage porque su ausencia se comprobó. Los datos de esta copia ya se restauraron; el inicio de sesión con la contraseña del usuario sigue pendiente. La copia está local; falta custodia externa, frecuencia y retención definidas por la escuela. Las herramientas Auth de ensayo anteriores conservan sus restricciones a datos sintéticos.
+Este formato es una **instantánea SQL del estado capturado el 9 de octubre con Storage vacío**, no un `pg_dump` ni una copia de configuración de servicios, secretos, SMTP o proveedores. No exporta bytes Storage porque su ausencia se comprobó en esa captura. No confirma que la matrícula o los archivos permanezcan vacíos hoy. Los datos de esta copia ya se restauraron; el inicio de sesión con la contraseña del usuario sigue pendiente. La copia está local; falta custodia externa, frecuencia y retención definidas por la escuela. Las herramientas Auth de ensayo anteriores conservan sus restricciones a datos sintéticos.
 
-## Recuperación real de los datos escolares actuales
+## Recuperación real de los datos escolares capturados
 
 Un destino nuevo, identificado y vacío, recibió las 25 migraciones registradas, el SELECT29 y cuatro índices secundarios Auth capturados. Se comprobaron las 494 columnas con todas sus propiedades, restricciones, índices, versiones Auth82, políticas, RLS y permisos públicos. La función pública administrada `rls_auto_enable` se reconstruyó desde su definición; la copia no contiene el registro de su event trigger ni ACL de funciones Auth y no acredita su equivalencia.
 
