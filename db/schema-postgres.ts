@@ -335,5 +335,5 @@ export const schoolAccountInvitationProvisions = pgTable("school_account_invitat
   invitationNonce: uuid("invitation_nonce").notNull().unique(),
   inviterId: uuid("inviter_id").notNull().references(() => user.id),
   provisionedAt: timestamp("provisioned_at", { withTimezone: true, mode: "date" }).notNull(),
-  state: text("state", { enum: ["provisioned", "quarantined", "managed"] }).notNull(),
-}, (t) => [check("school_account_invitation_provisions_state_check", sql`${t.state} in ('provisioned', 'quarantined', 'managed')`)]);
+  state: text("state", { enum: ["provisioned", "quarantined", "managed", "reissuing"] }).notNull(),
+}, (t) => [check("school_account_invitation_provisions_state_check", sql`${t.state} in ('provisioned', 'quarantined', 'managed', 'reissuing')`)]);
