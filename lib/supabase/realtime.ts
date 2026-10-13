@@ -1,5 +1,6 @@
 /** Server-only, caller-JWT subscription. Never import this module in client UI. */
 import { RealtimeClient } from "@supabase/realtime-js";
+import { schoolRealtimeTransport } from "@/lib/runtime/realtime-transport";
 
 export type SchoolRealtimeInvalidation =
   | { scope: "notifications" }
@@ -74,6 +75,7 @@ function validConfiguration(options: SchoolRealtimeSubscriptionOptions) {
 
 const sdkClientFactory: SchoolRealtimeClientFactory = (endpoint, credentials) => {
   const client = new RealtimeClient(endpoint, {
+    transport: schoolRealtimeTransport,
     params: { apikey: credentials.publishableKey },
     accessToken: async () => credentials.accessToken,
     timeout: 10_000,
@@ -84,7 +86,11 @@ const sdkClientFactory: SchoolRealtimeClientFactory = (endpoint, credentials) =>
   return {
     setAuth: token => client.setAuth(token),
     channel: name => {
-      const channel = client.channel(name);
+      // Join alone can precede the CDC subscription. The SDK adds its 10s
+      // error-reply grace to this 10s server wait, giving a bounded 20s join.
+      const channel = client.channel(name, {
+        config: { postgres_changes_options: { wait: true, timeout: 10_000 } },
+      });
       return {
         on: (filter, callback) => { channel.on("postgres_changes", filter, payload => callback(payload)); },
         subscribe: callback => { channel.subscribe(status => callback(status)); },
