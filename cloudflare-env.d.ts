@@ -21,6 +21,8 @@ declare namespace Cloudflare {
     SUPABASE_STORAGE_BUCKET?: string;
     SCHOOL_FILE_STORAGE_PROVIDER?: "r2" | "supabase";
     SCHOOL_AUTH_PROVIDER?: "better-auth" | "supabase";
+    SCHOOL_ACCOUNT_ACTIVATION_MODE?: "email" | "internal";
+    SCHOOL_ACCOUNT_ACTIVATION_SECRET?: string;
     SCHOOL_DATA_PROVIDER?: "d1" | "supabase";
     SCHOOL_REALTIME_PROVIDER?: "disabled" | "supabase";
     // External notices remain off until SQL31 and private provider configuration are approved.
