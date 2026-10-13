@@ -11,9 +11,12 @@ const person = { id: 'legacy-person-id', name: 'Synthetic adult', email: 'adult@
 const props = { initialUsers: [person], initialTotal: 1, actorId: 'school-admin', canCreateDirection: true, useSupabaseInvites: true };
 const jsx = (type, props) => ({ type, props });
 const source = ts.transpileModule(readFileSync(new URL('../app/cuentas/account-manager.tsx', import.meta.url), 'utf8'), { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX } }).outputText;
+const reissueSource = ts.transpileModule(readFileSync(new URL('../app/cuentas/internal-reissue-control.tsx', import.meta.url), 'utf8'), { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX } }).outputText;
 function load(dependencies, globals = {}) {
+  const reissueModule = { exports: {} };
+  vm.runInNewContext(reissueSource, { module: reissueModule, exports: reissueModule.exports, require: name => dependencies[name] ?? assert.fail(`Unexpected import ${name}`), ...globals });
   const sandboxModule = { exports: {} };
-  vm.runInNewContext(source, { module: sandboxModule, exports: sandboxModule.exports, require: name => dependencies[name] ?? assert.fail(`Unexpected import ${name}`), ...globals });
+  vm.runInNewContext(source, { module: sandboxModule, exports: sandboxModule.exports, require: name => name === './internal-reissue-control' ? reissueModule.exports : dependencies[name] ?? assert.fail(`Unexpected import ${name}`), ...globals });
   return sandboxModule.exports.AccountManager;
 }
 function elements(tree, type) {
@@ -83,6 +86,15 @@ test('actual React SSR keeps account controls disabled until the authenticated l
   assert.match(html, /<input(?=[^>]*name="email")(?=[^>]*disabled="")[^>]*>/);
   assert.match(html, /role="status"/);
   assert.doesNotMatch(html, /name="password"/);
+});
+
+test('actual React SSR includes the real reissue component with writes disabled during the account read', () => {
+  const Component = load({ react: React, 'react/jsx-runtime': runtime });
+  const html = renderToStaticMarkup(React.createElement(Component, { ...props, useInternalActivation: true }));
+  assert.match(html, /aria-label="Renovar primer acceso"/);
+  assert.match(html, /<button(?=[^>]*disabled="")[^>]*>Renovar código pendiente<\/button>/);
+  const protectedHtml = renderToStaticMarkup(React.createElement(Component, { ...props, useInternalActivation: true, actorId: person.id }));
+  assert.doesNotMatch(protectedHtml, /Renovar primer acceso/);
 });
 
 test('initial authenticated read has a deadline, no cache, and blocks writes while pending', async () => {
@@ -242,4 +254,71 @@ test('request deadlines turn pending reads and uncertain writes into explicit re
 test('protected self and superadmin rows have no editing controls', async () => {
   const ui = harness({ initialUsers: [{ ...person, id: 'school-admin' }, { ...person, id: 'superadmin', role: 'superadmin' }], initialTotal: 2 }); await ui.ready();
   assert.equal(elements(ui.render(), 'details').length, 0); assert.equal(elements(ui.render(), 'form').length, 1);
+});
+
+const activationCode = `EMDN1.${'SyntheticOnly_NotARealCredential'.repeat(4)}`;
+const activation = () => ({ code: activationCode, expiresAt: new Date(Date.now() + 30 * 60_000).toISOString(), activationPath: '/activar-cuenta' });
+const internalCreated = () => ({ id: '11111111-1111-4111-8111-111111111111', invited: false, activation: activation() });
+
+test('internal access SSR uses an existing email and requests no administrator-chosen password', () => {
+  const Component = load({ react: React, 'react/jsx-runtime': runtime });
+  const html = renderToStaticMarkup(React.createElement(Component, { ...props, useInternalActivation: true }));
+  assert.match(html, /Crear acceso/); assert.match(html, /correo que la persona ya tenga/);
+  assert.doesNotMatch(html, /name="password"|Enviar invitación|account-activation-code/);
+  assert.match(html, /value="docente"/); assert.doesNotMatch(html, /<option value="superadmin"[^>]*>Superadministrador/);
+});
+
+test('confirmed internal receipt displays only the new code, keeps it after failed independent GET, and excludes code from link URLs', async () => {
+  const ui = harness({ useInternalActivation: true }); await ui.ready();
+  const first = ui.submit(); await ui.reply(1, internalCreated(), 201);
+  assert.equal(first.syntheticForm.resets, 1); assert.match(text(ui.render()), /Acceso creado|new@example.test/);
+  assert.equal(elements(ui.render(), 'textarea')[0].props.value, activationCode);
+  assert.equal(elements(ui.render(), 'textarea')[0].props.readOnly, true);
+  const link = elements(ui.render(), 'a').find(item => item.props.href === '/activar-cuenta'); assert.ok(link);
+  assert.ok(elements(ui.render(), 'a').every(item => !item.props.href.includes(activationCode)));
+  await ui.reply(2, {}, 503); await first.promise;
+  assert.equal(elements(ui.render(), 'textarea')[0].props.value, activationCode);
+  assert.match(text(ui.render()), /Acceso creado/); assert.doesNotMatch(text(ui.render()), /Invitación creada/);
+});
+
+for (const [label, altered] of [
+  ['missing code', value => ({ ...value, activation: undefined })],
+  ['unexpected destination', value => ({ ...value, activation: { ...value.activation, activationPath: 'https://example.test/steal' } })],
+  ['invited email receipt', value => ({ ...value, invited: true })],
+  ['expired code', value => ({ ...value, activation: { ...value.activation, expiresAt: '2020-01-01T00:00:00Z' } })],
+  ['malformed code', value => ({ ...value, activation: { ...value.activation, code: '<script>synthetic</script>' } })],
+  ['invalid expiry', value => ({ ...value, activation: { ...value.activation, expiresAt: 'tomorrow' } })],
+  ['wrong id', value => ({ ...value, id: 'legacy-id' })],
+]) test(`internal creation rejects ${label} without exposing code or resetting the form`, async () => {
+  const ui = harness({ useInternalActivation: true }); await ui.ready(); const first = ui.submit();
+  await ui.reply(1, altered(internalCreated()), 201); await first.promise;
+  assert.equal(first.syntheticForm.resets, 0); assert.equal(elements(ui.render(), 'textarea').length, 0);
+  assert.match(text(ui.render()), /No se pudo confirmar/); assert.doesNotMatch(text(ui.render()), /Acceso creado|Invitación creada/);
+  assert.equal(ui.state.calls.length, 2);
+});
+
+test('private code can be explicitly discarded and copying unavailable announces manual selection', async () => {
+  const ui = harness({ useInternalActivation: true }); await ui.ready(); const first = ui.submit();
+  await ui.reply(1, internalCreated(), 201); await ui.reply(2, { items: [person], total: 1 }); await first.promise;
+  ui.button('Copiar código privado').props.onClick(); await tick();
+  assert.match(text(ui.render()), /No se pudo copiar/);
+  ui.button('Ocultar código').props.onClick();
+  assert.equal(elements(ui.render(), 'textarea').length, 0); assert.doesNotMatch(text(ui.render()), /No se pudo copiar/);
+});
+
+test('GET permission revocation clears the newly issued code and the email receipt', async () => {
+  const ui = harness({ useInternalActivation: true }); await ui.ready(); const first = ui.submit();
+  await ui.reply(1, internalCreated(), 201); await ui.reply(2, {}, 403); await first.promise;
+  assert.equal(elements(ui.render(), 'textarea').length, 0); assert.doesNotMatch(text(ui.render()), /new@example.test|Acceso creado/);
+});
+
+test('changing administrative identity hides and discards a private receipt and requires a new list read', async () => {
+  const options = { useInternalActivation: true };
+  const ui = harness(options); await ui.ready(); const first = ui.submit();
+  await ui.reply(1, internalCreated(), 201); await ui.reply(2, { items: [person], total: 1 }); await first.promise;
+  options.actorId = 'another-admin'; assert.equal(elements(ui.render(), 'textarea').length, 0); await tick();
+  assert.equal(ui.state.calls[3].method, 'GET');
+  await ui.reply(3, { items: [person], total: 1 });
+  options.actorId = 'school-admin'; ui.render(); await tick();
+  assert.equal(elements(ui.render(), 'textarea').length, 0);
 });
