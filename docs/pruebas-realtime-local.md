@@ -61,6 +61,16 @@ La limpieza/custodia sí pasó: 33 tablas/69 filas/6 cuentas Auth/3 objetos qued
 
 Este intento no probó producción ni HTTPS de Vercel. El PASS del dispatcher exclusivo del 9 de octubre conserva su alcance; el chat de navegador y la entrega con transporte predeterminado requieren diagnóstico y aceptación posteriores. Un HTTP200 del endpoint de eventos no acredita que el stream haya llegado a `ready` ni que entregue mensajes.
 
+### Diagnóstico pasivo posterior: primera frontera observada
+
+`outputs/supabase-default-sdk-passive-diagnostic-20261013.json` conserva **NOT_ACCEPTED** para una ejecución del código publicado en Next local. Se usó una familia ficticia ya custodiada, sin crear cuentas, cambiar contraseñas, insertar conversaciones o enviar mensajes. Ingreso, sesión, configuración, apertura SSE y cierre de sesión devolvieron 200; el único evento fue `end` con motivo `unavailable`, sin `ready`.
+
+Un observador pasivo de `diagnostics_channel`, cargado antes de Next, no sustituyó `fetch`, WebSocket, dispatcher ni callbacks del SDK. En el mismo proceso observó que la petición WebSocket utilizó el socket número 2, previamente empleado para REST, y recibió `AbortError` unos diez segundos después. No observó una respuesta HTTP101. Solo guardó categorías, identificadores locales de sockets y tiempos; no guardó cabeceras, consultas, cuerpos ni credenciales. Los identificadores de sockets no se comparan entre procesos.
+
+Esto ubica el fallo local antes de una suscripción confirmada; no demuestra la causa interna del gateway o de Undici, ni el comportamiento HTTPS de Vercel. Cualquier solución debe aplicarse al transporte de la aplicación y ensayarse desde esa misma fuente, conservando separada esta evidencia anterior. Cambiar solo el transporte de un harness no acredita la aplicación.
+
+La custodia volvió a pasar: 33 tablas, 69 filas, seis cuentas Auth, tres objetos y 84 funciones se conservaron. Únicamente se permitieron avances válidos de fechas de ingreso de la familia participante. Next y los seis servicios Native quedaron detenidos y sus puertos cerrados.
+
 ## Evidencia de accesos separada del chat
 
 La regresión final `outputs/release-validation-internal-reissue-final-20261012.json` pasó **1.067 pruebas**, lint, TypeScript y ambas compilaciones antes de esta actualización documental posterior a la promoción. El ensayo `outputs/supabase-internal-reissue-native-20261012.private.json` pasó **14 comprobaciones/44 solicitudes reales** de SQL32/SQL33, activación y reemisión sin verificar, con limpieza y conservación de datos/catálogo/CHECK/ACL. Los resultados anteriores de 1.037 pruebas y 9 comprobaciones/36 solicitudes de activación son históricos y separados.
