@@ -106,7 +106,8 @@ export function createSchoolRealtimeClient(runtime: SchoolRealtimeRuntime) {
       clearDeadline(); request = null;
       const connection = runtime.openStream("/api/realtime/events"); stream = connection;
       const currentConnection = () => current === generation && stream === connection && available();
-      deadline = runtime.setTimer(() => { if (currentConnection()) reconnect(); }, 20_000);
+      // The server waits up to 25s for CDC confirmation or a terminal error.
+      deadline = runtime.setTimer(() => { if (currentConnection()) reconnect(); }, 30_000);
       connection.addEventListener("ready", event => {
         if (!currentConnection()) return;
         const data = parseSignal(event);
