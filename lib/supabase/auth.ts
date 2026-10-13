@@ -63,6 +63,10 @@ export type AdminGenerateInviteLinkInput = {
 /** Server-only receipt. tokenHash is an invitation credential, not public data. */
 export type GeneratedInviteLink = { user: AuthUser; tokenHash: string };
 
+/** Private provider receipt for an existing, separately authorized account. */
+export type AdminGenerateRecoveryLinkInput = { email: string; expectedUserId: string };
+export type GeneratedRecoveryLink = { id: string; email: string; emailConfirmedAt: string; tokenHash: string };
+
 export type AdminUpdateUserInput = {
   email?: string;
   password?: string;
@@ -108,6 +112,8 @@ type AuthOperation =
   | "admin_invite_user"
   | "admin_generate_invite_link"
   | "verify_invite_token"
+  | "verify_recovery_token"
+  | "admin_generate_recovery_link"
   | "admin_update_user"
   | "admin_list_users"
   | "admin_disable_user"
@@ -288,7 +294,44 @@ export function createSupabaseAuthClient(
     return parseSession(payload, operation);
   }
 
+  /** Call only after the private recovery ledger has consumed the matching
+   * case. This provisional session must never become a normal school cookie. */
+  async function verifyRecoveryTokenHash(tokenHash: string): Promise<AuthSession> {
+    const operation = "verify_recovery_token" as const;
+    if (typeof tokenHash !== "string" || !INVITE_TOKEN_HASH_PATTERN.test(tokenHash)) throw authError("invalid_input", operation);
+    const payload = await request(operation, "verify", {
+      method: "POST", key: publicKey(operation), body: { token_hash: tokenHash, type: "recovery" },
+    });
+    return parseSession(payload, operation);
+  }
+
   const admin = {
+    /** No email endpoint, password mutation or user creation. The caller must
+     * first reserve an eligible, identity-verified recovery case in the DB.
+     * An unexpected provider identity is rejected without attempting repair. */
+    async generateRecoveryLink(input: AdminGenerateRecoveryLinkInput): Promise<GeneratedRecoveryLink> {
+      const operation = "admin_generate_recovery_link" as const;
+      if (!input || typeof input !== "object" || Array.isArray(input) || Object.keys(input).length !== 2
+        || !Object.hasOwn(input, "email") || !Object.hasOwn(input, "expectedUserId")) throw authError("invalid_input", operation);
+      validateEmail(input.email, operation); validateUserId(input.expectedUserId, operation);
+      const email = input.email.trim().toLowerCase();
+      const adminKey = serviceKey(operation);
+      const payload = await request(operation, "admin/generate_link", {
+        method: "POST", key: adminKey,
+        ...(adminKey.startsWith("sb_secret_") ? {} : { bearer: adminKey }),
+        body: { type: "recovery", email },
+      });
+      if (!payload || typeof payload !== "object" || Array.isArray(payload)) throw authError("rejected", operation, 502);
+      const receipt = payload as Record<string, unknown>;
+      if (receipt.verification_type !== "recovery" || receipt.id !== input.expectedUserId
+        || typeof receipt.email !== "string" || receipt.email.trim().toLowerCase() !== email
+        || typeof receipt.email_confirmed_at !== "string" || !Number.isFinite(Date.parse(receipt.email_confirmed_at))
+        || typeof receipt.hashed_token !== "string" || !INVITE_TOKEN_HASH_PATTERN.test(receipt.hashed_token)) throw authError("rejected", operation, 502);
+      // Never copy action_link, email_otp, redirect_to or arbitrary provider
+      // metadata into a user object, audit record or caller-visible response.
+      return { id: input.expectedUserId, email, emailConfirmedAt: receipt.email_confirmed_at, tokenHash: receipt.hashed_token };
+    },
+
     /** Generate an invitation without invoking an email-sending endpoint. */
     async generateInviteLink(input: AdminGenerateInviteLinkInput): Promise<GeneratedInviteLink> {
       const operation = "admin_generate_invite_link" as const;
@@ -435,7 +478,7 @@ export function createSupabaseAuthClient(
     },
   };
 
-  return { signIn, refresh, verifyCurrentUser, signOut, requestPasswordRecovery, changePassword, verifyInviteTokenHash, admin };
+  return { signIn, refresh, verifyCurrentUser, signOut, requestPasswordRecovery, changePassword, verifyInviteTokenHash, verifyRecoveryTokenHash, admin };
 }
 
 /** Serialize one secure host-only auth cookie. Secure flags are fixed. */
