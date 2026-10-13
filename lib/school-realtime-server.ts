@@ -133,7 +133,9 @@ export function createSchoolRealtimeHandlers(overrides: Partial<Dependencies> = 
           }, () => finish("unavailable")).finally(() => { dependencies.clearAfter(verificationDeadline); checking = false; });
         }, 30_000));
         timeouts.push(dependencies.after(() => finish("rotate"), 240_000));
-        timeouts.push(dependencies.after(() => { if (!ready) finish("unavailable"); }, 15_000));
+        // CDC wait + SDK error-reply grace allow a 20s join; close after 25s
+        // without a confirmed subscription, before the browser's 30s deadline.
+        timeouts.push(dependencies.after(() => { if (!ready) finish("unavailable"); }, 25_000));
         try {
           subscription = dependencies.subscribe({
             url: dependencies.environment.SUPABASE_URL ?? "", publishableKey: dependencies.environment.SUPABASE_PUBLISHABLE_KEY ?? "",
