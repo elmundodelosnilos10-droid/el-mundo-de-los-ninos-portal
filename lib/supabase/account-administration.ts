@@ -6,6 +6,11 @@ import type { createSchoolDatabaseClient } from "./database";
 type AuthClient = ReturnType<typeof createSchoolAuthClient>;
 type DatabaseClient = ReturnType<typeof createSchoolDatabaseClient>;
 export type InvitedSchoolRole = "direccion" | "docente" | "tutor";
+export type SchoolInvitationDelivery = { delivery?: "email" | "internal" };
+/** Private server receipt. Seal it before returning an activation code to UI. */
+export type SchoolActivationIdentity = {
+  id: string; email: string; role: InvitedSchoolRole; nonce: string; tokenHash: string;
+};
 
 export class SchoolAccountAdministrationError extends Error {
   readonly code: "forbidden" | "already_exists" | "unavailable" | "invitation_uncertain" | "provisioning_blocked" | "provisioning_uncertain";
@@ -35,16 +40,22 @@ export async function inviteSchoolAccount(
   actor: Actor,
   input: { name: string; email: string; role: InvitedSchoolRole },
   appOrigin: string | undefined,
+  options: SchoolInvitationDelivery = {},
 ) {
   const jwt = actorJwt(actor);
+  if (!["direccion", "docente", "tutor"].includes(input.role)) throw new SchoolAccountAdministrationError("forbidden");
   if (input.role === "direccion" && !actor.roles.includes("superadmin")) throw new SchoolAccountAdministrationError("forbidden");
   const email = input.email.trim().toLowerCase();
-  let redirectTo: string;
+  const delivery = options.delivery ?? "email";
+  if (delivery !== "email" && delivery !== "internal") throw new SchoolAccountAdministrationError("unavailable");
+  let redirectTo: string | undefined;
   try {
-    if (!appOrigin) throw new Error();
-    const origin = new URL(appOrigin);
-    if (origin.protocol !== "https:" || origin.username || origin.password || origin.pathname !== "/" || origin.search || origin.hash) throw new Error();
-    redirectTo = new URL("/restablecer", origin).toString();
+    if (delivery === "email") {
+      if (!appOrigin) throw new Error();
+      const origin = new URL(appOrigin);
+      if (origin.protocol !== "https:" || origin.username || origin.password || origin.pathname !== "/" || origin.search || origin.hash) throw new Error();
+      redirectTo = new URL("/restablecer", origin).toString();
+    }
   } catch { throw new SchoolAccountAdministrationError("unavailable"); }
 
   let before;
@@ -54,9 +65,20 @@ export async function inviteSchoolAccount(
   const previousIds = new Set(before.map(user => user.id));
   const nonce = crypto.randomUUID();
   let invited;
-  try { invited = await auth.admin.inviteUserByEmail({ email, redirectTo, user_metadata: { name: input.name } }); }
+  let tokenHash: string | undefined;
+  try {
+    if (delivery === "internal") {
+      const generated = await auth.admin.generateInviteLink({ email, user_metadata: { name: input.name } });
+      invited = generated.user;
+      tokenHash = generated.tokenHash;
+      if (typeof tokenHash !== "string" || !/^(?:[0-9a-f]{56}|[0-9a-f]{64})$/i.test(tokenHash)) throw new Error();
+    } else {
+      if (!redirectTo) throw new Error();
+      invited = await auth.admin.inviteUserByEmail({ email, redirectTo, user_metadata: { name: input.name } });
+    }
+  }
   catch { throw new SchoolAccountAdministrationError("invitation_uncertain"); }
-  if (previousIds.has(invited.id) || invited.email?.trim().toLowerCase() !== email
+  if (invited.id === actor.id || previousIds.has(invited.id) || invited.email?.trim().toLowerCase() !== email
     || typeof invited.invited_at !== "string" || !Number.isFinite(Date.parse(invited.invited_at))) {
     throw new SchoolAccountAdministrationError("invitation_uncertain");
   }
@@ -66,11 +88,14 @@ export async function inviteSchoolAccount(
   try {
     const stamped = await auth.admin.updateUser(invited.id, { app_metadata: {
       ...(invited.app_metadata ?? {}),
-      school_invitation_receipt: { nonce, inviter_id: actor.id, email },
+      school_invitation_receipt: { nonce, inviter_id: actor.id, email,
+        ...(delivery === "internal" ? { delivery: "internal", role: input.role } : {}),
+      },
     } });
     const receipt = stamped.app_metadata?.school_invitation_receipt as Record<string, unknown> | undefined;
     if (stamped.id !== invited.id || stamped.email?.trim().toLowerCase() !== email
-      || !receipt || receipt.nonce !== nonce || receipt.inviter_id !== actor.id || receipt.email !== email) throw new Error();
+      || !receipt || receipt.nonce !== nonce || receipt.inviter_id !== actor.id || receipt.email !== email
+      || delivery === "internal" && (receipt.delivery !== "internal" || receipt.role !== input.role)) throw new Error();
   } catch { throw new SchoolAccountAdministrationError("invitation_uncertain"); }
 
   try {
@@ -80,6 +105,10 @@ export async function inviteSchoolAccount(
     });
     const account = result.data[0];
     if (!account || account.id !== invited.id || account.role !== input.role || account.active !== true) throw new Error();
+    if (delivery === "internal") {
+      const activationIdentity: SchoolActivationIdentity = { id: invited.id, email, role: input.role, nonce, tokenHash: tokenHash! };
+      return { id: invited.id, invited: false, activationIdentity };
+    }
     return { id: invited.id, invited: true };
   } catch {
     // If provision committed before the response was lost, remove only the
